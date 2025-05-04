@@ -41,15 +41,32 @@ export async function initiatePayment(
   }
 
   // Initialize Cashfree with credentials
-  const cashfree = new Cashfree({
-    api_key: process.env.CASHFREE_APP_ID!,
-    api_secret: process.env.CASHFREE_SECRET_KEY!,
-    env: 'PRODUCTION', // Or 'SANDBOX' based on your environment
-  });
+  // Ensure environment matches the keys (PRODUCTION vs SANDBOX)
+  const cashfreeEnv = process.env.CASHFREE_SECRET_KEY?.includes('_test_') ? 'SANDBOX' : 'PRODUCTION';
+  console.log(`Initializing Cashfree SDK in ${cashfreeEnv} mode.`);
+
+  let cashfree: Cashfree;
+  try {
+      cashfree = new Cashfree({
+        api_key: process.env.CASHFREE_APP_ID!,
+        api_secret: process.env.CASHFREE_SECRET_KEY!,
+        // env: 'PRODUCTION', // Use PRODUCTION keys
+         env: cashfreeEnv, // Dynamically set based on key or use a dedicated ENV var
+      });
+      // Add a check immediately after initialization
+      if (!cashfree || typeof cashfree.orders === 'undefined') {
+          console.error('Cashfree SDK initialization failed - orders object is missing.');
+          throw new Error('Payment SDK failed to initialize properly.');
+      }
+      console.log('Cashfree SDK initialized successfully.');
+  } catch (initError: any) {
+        console.error('Error initializing Cashfree SDK:', initError);
+        return { success: false, error: `Payment SDK initialization error: ${initError.message}` };
+  }
 
 
   const orderId = `GEPTO-${uuidv4()}`; // Generate a unique order ID
-  const returnUrl = `${process.env.NEXT_PUBLIC_APP_URL}/order/status?order_id=${orderId}`; // URL to redirect after payment
+  const returnUrl = `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:9002'}/order/status?order_id=${orderId}`; // URL to redirect after payment
 
   try {
     const request = {
@@ -73,7 +90,13 @@ export async function initiatePayment(
 
     console.log('Cashfree Order Request:', request);
 
-    // Use the instantiated cashfree object to call PGOrderCreate
+    // Double-check cashfree.orders just before the call (belt and suspenders)
+    if (!cashfree.orders) {
+        console.error('Cashfree SDK orders object became undefined before create call.');
+        return { success: false, error: 'Payment SDK state error.' };
+    }
+
+    // Use the instantiated cashfree object to call orders.create
     const response = await cashfree.orders.create(request);
 
     console.log('Cashfree Order Response:', response.data);
@@ -98,15 +121,24 @@ export async function initiatePayment(
     // Check for Cashfree specific error structure
      // Improved error handling for Cashfree specific responses
     let errorMessage = 'An unexpected error occurred during payment initiation.';
+    // Check if the error is from Cashfree response or a different kind of error
     if (error.response && error.response.data && error.response.data.message) {
         errorMessage = error.response.data.message;
          if (error.response.data.code) {
              errorMessage += ` (Code: ${error.response.data.code})`;
          }
-    } else if (error.message) {
+         console.error('Detailed Cashfree API Error:', error.response.data);
+    } else if (error.message) { // Handle errors not from Cashfree API (e.g., network, SDK internal)
         errorMessage = error.message;
+        // Log the full error object if it's not a standard Cashfree response error
+        if (!error.response) {
+            console.error('Non-API Error details:', error);
+        }
+    } else {
+         // Fallback for unknown error structure
+         console.error('Unknown error structure:', error);
     }
-    console.error('Detailed Cashfree Error:', error.response?.data || error);
+
     return { success: false, error: errorMessage };
   }
 }
