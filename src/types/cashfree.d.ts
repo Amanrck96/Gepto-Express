@@ -1,11 +1,11 @@
 // src/types/cashfree.d.ts
 
 /**
- * This declaration file provides basic typings for the cashfree-pg-sdk-javascript.
+ * This declaration file provides basic typings for the @cashfreepayments/cashfree-js SDK.
  * It might not be exhaustive. Refer to the official Cashfree documentation for full details.
  */
 
-declare module 'cashfree-pg-sdk-javascript' {
+declare module '@cashfreepayments/cashfree-js' {
   /**
    * Configuration options for initializing the Cashfree SDK.
    */

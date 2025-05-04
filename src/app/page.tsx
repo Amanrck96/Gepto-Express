@@ -15,7 +15,7 @@ import { getNearbyStores } from '@/services/store';
 import { getProductCategories, getProductsByStoreAndCategory } from '@/services/product';
 import { useToast } from '@/hooks/use-toast';
 import { initiatePayment } from '@/actions/payment'; // Import the server action
-import { load } from 'cashfree-pg-sdk-javascript'; // Import Cashfree SDK loader
+import { load } from '@cashfreepayments/cashfree-js'; // Import Cashfree SDK loader
 
 
 // Mock Cart Item Type - Export it so it can be used in actions/payment.ts
