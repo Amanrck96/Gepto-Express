@@ -1,4 +1,3 @@
-
 'use server';
 
 import { Cashfree } from 'cashfree-pg';
@@ -26,23 +25,11 @@ interface InitiatePaymentResponse {
   redirectUrl?: string; // In case direct redirect is needed
 }
 
-// Initialize Cashfree SDK instance globally or within a helper function if preferred
-// Ensure environment variables are loaded correctly
-let cashfree: Cashfree | null = null;
+// --- Removed getCashfreeInstance - Will use static configuration ---
 
-function getCashfreeInstance(): Cashfree {
-  if (cashfree) {
-     // Check if the existing instance is still valid (basic check)
-     if (typeof cashfree.orders?.create === 'function') {
-       console.log('Cashfree Info: Reusing existing valid SDK instance.');
-       return cashfree;
-     } else {
-        console.warn('Cashfree Warning: Existing SDK instance appears invalid. Re-initializing...');
-        cashfree = null; // Force re-initialization
-     }
-  }
-
-  console.log('Cashfree Info: Attempting to initialize new SDK instance...');
+// Function to configure Cashfree SDK statically
+function configureCashfreeSDK() {
+  console.log('Cashfree Info: Configuring SDK statically...');
   const appId = process.env.CASHFREE_APP_ID;
   const secretKey = process.env.CASHFREE_SECRET_KEY;
 
@@ -56,35 +43,15 @@ function getCashfreeInstance(): Cashfree {
                         ? Cashfree.Environment.PRODUCTION
                         : Cashfree.Environment.SANDBOX;
 
-  console.log(`Cashfree Info: Initializing SDK (v5+) in ${cashfreeEnv === Cashfree.Environment.PRODUCTION ? 'PRODUCTION' : 'SANDBOX'} mode.`);
-  console.log(`Cashfree Info: Using App ID starting with: ${appId.substring(0, 6)}...`); // Log first few chars for verification
+  Cashfree.XClientId = appId;
+  Cashfree.XClientSecret = secretKey;
+  Cashfree.XEnvironment = cashfreeEnv;
+  // Specify API version (required for older SDK style used by v4.x)
+  Cashfree.XApiVersion = "2023-08-01"; // Use a recent stable version
 
-  try {
-    // --- SDK v5+ Initialization ---
-    const instance = new Cashfree(cashfreeEnv, appId, secretKey); // Initialize locally first
-    console.log('Cashfree Info: SDK v5+ instance construction attempted.');
-
-    // *** Add detailed check here ***
-    // Verify the structure of the newly created instance BEFORE assigning it globally
-    if (!instance || typeof instance.orders !== 'object' || instance.orders === null || typeof instance.orders.create !== 'function') {
-        console.error('Cashfree FATAL Error: Newly created SDK instance is invalid or missing `orders.create` method immediately after construction. Instance:', instance);
-        // Attempt to log keys of the instance if it exists, to help debug structure
-        if(instance) {
-             console.error('Cashfree FATAL Error: Keys found on invalid instance:', Object.keys(instance));
-        }
-        cashfree = null; // Ensure global remains null
-        throw new Error('Payment SDK internal structure error after initialization. Check logs.');
-    }
-
-    console.log('Cashfree Info: SDK v5+ instance created successfully and seems valid.');
-    cashfree = instance; // Assign to global variable only if valid
-    return cashfree;
-  } catch (configError: any) {
-    console.error('Cashfree FATAL Error: Error during Cashfree SDK v5+ initialization or validation:', configError);
-    cashfree = null; // Reset on error
-    // Throw a more specific error to be caught by the caller
-    throw new Error(`Payment SDK initialization failed: ${configError.message || 'Failed to configure SDK.'}`);
-  }
+  console.log(`Cashfree Info: Statically configured SDK in ${cashfreeEnv === Cashfree.Environment.PRODUCTION ? 'PRODUCTION' : 'SANDBOX'} mode.`);
+  console.log(`Cashfree Info: Using App ID starting with: ${appId.substring(0, 6)}...`);
+  console.log(`Cashfree Info: Using API Version: ${Cashfree.XApiVersion}`);
 }
 
 
@@ -92,17 +59,15 @@ export async function initiatePayment(
   input: InitiatePaymentInput
 ): Promise<InitiatePaymentResponse> {
   const { items, totalAmount, customerDetails } = input;
-  let paymentInstance: Cashfree;
 
-  // Ensure SDK instance is ready
-   try {
-     paymentInstance = getCashfreeInstance();
-   } catch (sdkError: any) {
-      // Catch initialization errors specifically
-     console.error("Cashfree Error: Failed to get SDK instance during initiatePayment.", sdkError);
-     // Provide a clearer error message based on the caught error
-     return { success: false, error: `Payment SDK initialization error: ${sdkError.message || "Payment SDK could not be initialized."}` };
-   }
+  // Configure SDK before making the call
+  try {
+    configureCashfreeSDK();
+  } catch (configError: any) {
+     console.error("Cashfree Error: Failed to configure SDK during initiatePayment.", configError);
+     return { success: false, error: `Payment SDK configuration error: ${configError.message || "SDK could not be configured."}` };
+  }
+
 
   if (totalAmount <= 0) {
       console.error(`Cashfree Error: Invalid order amount: ${totalAmount}`);
@@ -160,39 +125,34 @@ export async function initiatePayment(
     order_expiry_time: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
   };
 
-  // **Diagnosis Step 1: Check if the request object itself is null/undefined**
+  // **Check if the request object itself is null/undefined**
   if (!request) {
-      console.error('Cashfree FATAL Error: The constructed `request` object is unexpectedly null or undefined before calling orders.create.');
+      console.error('Cashfree FATAL Error: The constructed `request` object is unexpectedly null or undefined before calling PGCreateOrder.');
       return { success: false, error: 'Internal server error: Failed to construct payment request data.' };
   }
 
-  // **Diagnosis Step 2: Log the exact request object being sent**
-  console.log('Cashfree Info: Preparing to call cashfree.orders.create with request object:', JSON.stringify(request, null, 2));
+  // **Log the exact request object being sent**
+  console.log('Cashfree Info: Preparing to call Cashfree.PGCreateOrder with request object:', JSON.stringify(request, null, 2));
 
 
-  // **Diagnosis Step 3: Re-check the SDK instance JUST before the API call**
-   if (!paymentInstance || typeof paymentInstance.orders !== 'object' || paymentInstance.orders === null) {
-        // This error should ideally be caught during getCashfreeInstance, but double-check
-        console.error('Cashfree FATAL Error: Cashfree SDK instance is invalid or missing the `orders` property *before* API call. This should not happen if getCashfreeInstance worked.');
-        return { success: false, error: 'Payment SDK configuration error: SDK properties missing unexpectedly. Please check server logs.' };
-   }
-   // Check if the create method exists, again double-checking
-    if (typeof paymentInstance.orders.create !== 'function') {
-        console.error('Cashfree FATAL Error: Method `cashfree.orders.create` not found *before* API call. SDK might be corrupted or incorrectly initialized.');
-        return { success: false, error: 'Payment SDK configuration error: CreateOrder method is not available unexpectedly. Please check server logs.' };
+  // ** Check if the static method exists (basic sanity check) **
+   if (typeof Cashfree.PGCreateOrder !== 'function') {
+        console.error('Cashfree FATAL Error: Static method `Cashfree.PGCreateOrder` not found. SDK might be corrupted or incorrectly installed/imported.');
+        return { success: false, error: 'Payment SDK configuration error: CreateOrder method is not available. Please check server logs.' };
     }
 
-  console.log('Cashfree Info: Method `cashfree.orders.create` found. Proceeding with API call (v5+ style).');
+  console.log('Cashfree Info: Static method `Cashfree.PGCreateOrder` found. Proceeding with API call (v4.x style).');
 
 
   try {
-    // *** Use the instance method 'orders.create' (v5+ SDK style) ***
-    // Important: Ensure `request` is passed correctly
-    const response = await paymentInstance.orders.create(request);
+    // *** Use the static 'PGCreateOrder' method (v4.x SDK style) ***
+    // Pass the API version and the request object
+    const response = await Cashfree.PGCreateOrder(request); // API version is now set statically
 
     console.log('Cashfree Info: Order creation response received.');
     // Avoid logging the full response in production, maybe just keys or status
     console.log('Cashfree Debug: API Response keys:', response ? Object.keys(response) : 'null/undefined');
+    console.log('Cashfree Debug: API Response data:', response?.data); // Log data part
 
 
     if (response.data && response.data.payment_session_id) {
@@ -213,16 +173,16 @@ export async function initiatePayment(
       return { success: false, error: errorMessage, order_id: orderId }; // Include order_id even on failure if available
     }
   } catch (error: any) {
-    console.error('Cashfree Error: Exception during cashfree.orders.create call:', error);
+    console.error('Cashfree Error: Exception during Cashfree.PGCreateOrder call:', error);
 
     let errorMessage = 'An unexpected error occurred during payment initiation.';
     let statusCode: number | undefined;
 
-     // Check if the error itself has a 'response' property (Axios-like error structure)
-     if (error.response) {
+     // Check if the error itself has a 'response' property (Axios-like error structure from SDK)
+     if (error.response && error.response.data) {
         statusCode = error.response.status;
         const responseData = error.response.data; // This might contain { message, code, type } from Cashfree
-        console.error('Cashfree Error: Detailed API Error Response Data:', responseData || error.response); // Log the actual error data
+        console.error('Cashfree Error: Detailed API Error Response Data:', responseData); // Log the actual error data
 
         if (responseData && typeof responseData === 'object') {
             if (responseData.message) {
@@ -230,9 +190,12 @@ export async function initiatePayment(
                  if (responseData.code) {
                     errorMessage += ` (Code: ${responseData.code})`;
                      // *** Specific check for Authentication Failed ***
-                     if (responseData.code === 'authentication_failed' || responseData.code === 'request_failed') {
+                     if (responseData.code === 'authentication_failed' || responseData.code === 'request_failed' || responseData.type === 'authentication_error') {
                          console.error("Cashfree Authentication Error: The provided API keys (App ID/Secret Key) are likely incorrect or invalid for the current environment (Sandbox/Production). Please verify your .env.local or server environment variables.");
                          errorMessage = `Authentication failed with Cashfree. Please check API credentials and environment settings. (Code: ${responseData.code})`;
+                     } else if (responseData.type === 'invalid_request_error' && responseData.message?.includes('return_url')) {
+                          console.error("Cashfree Invalid Request Error: Check the return_url format. Ensure it's HTTPS (unless localhost) and correctly formed.");
+                          errorMessage = `Invalid return URL format: ${responseData.message} (Code: ${responseData.code})`;
                      }
                  }
             } else {
@@ -247,24 +210,16 @@ export async function initiatePayment(
         console.error('Cashfree Error: Non-API Error details:', error); // Log the full error object
 
         // Check for specific messages that might indicate SDK issues
-         if (errorMessage.includes('cashfree.orders.create is not a function')) {
+         if (errorMessage.includes('Cashfree.PGCreateOrder is not a function')) {
              errorMessage = 'Payment SDK configuration error: CreateOrder method missing (check SDK version/init).'
          } else if (errorMessage.includes('Required parameter CreateOrderRequest was null or undefined')) {
              // Should be caught earlier now, but keep as a fallback
              console.error('Cashfree Diagnosis: SDK threw "CreateOrderRequest was null or undefined" error *before* API call. This indicates an internal issue with request construction or SDK state.');
              errorMessage = 'Internal server error: Invalid payment request data constructed.';
-         } else if (errorMessage.includes('Payment SDK initialization failed')) {
-             // Catching the specific error from getCashfreeInstance
-              console.error('Cashfree Diagnosis: SDK initialization failed, possibly due to configuration issues (check App ID, Secret Key, Environment in .env files or server config) or internal SDK problems.');
-              errorMessage = 'Payment SDK initialization failed. Check server configuration.';
-         } else if (errorMessage.includes('missing orders property')) {
-             // Catching the specific error from the check before API call
-              console.error('Cashfree Diagnosis: SDK instance is missing the `orders` property. Initialization might have failed silently or SDK version issue.');
-              errorMessage = 'Payment SDK initialization error: SDK structure incorrect.';
-         } else if (errorMessage.includes('Payment SDK internal structure error')) {
-             // Catching the specific error from getCashfreeInstance validation
-              console.error('Cashfree Diagnosis: SDK instance structure was invalid immediately after creation.');
-              errorMessage = 'Payment SDK failed to initialize properly. Check server logs for details.';
+         } else if (errorMessage.includes('Payment SDK configuration error')) {
+             // Catching the specific error from configureCashfreeSDK
+              console.error('Cashfree Diagnosis: SDK configuration failed, possibly due to missing environment variables (CASHFREE_APP_ID, CASHFREE_SECRET_KEY).');
+              errorMessage = 'Payment SDK configuration failed. Check server environment variables.';
          }
 
      } else {
