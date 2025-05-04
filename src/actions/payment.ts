@@ -1,7 +1,7 @@
 
 'use server';
 
-import { Cashfree } from 'cashfree-pg';
+import { Cashfree, CashfreeConfig } from 'cashfree-pg';
 import { v4 as uuidv4 } from 'uuid';
 import type { CartItem } from '@/app/page'; // Assuming CartItem type is exported from page.tsx
 
@@ -26,8 +26,7 @@ interface InitiatePaymentResponse {
   redirectUrl?: string; // In case direct redirect is needed
 }
 
-// Define the Cashfree API version date (required for v4 SDK)
-// Use a recent, valid version date from Cashfree docs if needed.
+// Define the Cashfree API version date (required for v4 SDK, optional but good practice for v5+)
 const CASHFREE_API_VERSION = "2023-08-01";
 
 export async function initiatePayment(
@@ -49,37 +48,49 @@ export async function initiatePayment(
       return { success: false, error: 'Invalid order amount.' };
   }
 
-  // Determine environment - Use PRODUCTION since production keys were provided
-  const cashfreeEnv = Cashfree.Environment.PRODUCTION; // Use Enum for safety
+  // Determine environment based on NODE_ENV or a specific Cashfree env variable
+  // Defaulting to SANDBOX if NODE_ENV is not 'production'
+  const cashfreeEnv = process.env.NODE_ENV === 'production'
+                        ? Cashfree.Environment.PRODUCTION
+                        : Cashfree.Environment.SANDBOX;
+
   console.log(`Cashfree Info: Configuring Cashfree SDK in ${cashfreeEnv === Cashfree.Environment.PRODUCTION ? 'PRODUCTION' : 'SANDBOX'} mode.`);
 
-  // Configure Cashfree SDK globally for static methods (v4 style)
+  let cashfreeInstance: Cashfree; // Use the type from the SDK
   try {
-    Cashfree.XClientId = appId;
-    Cashfree.XClientSecret = secretKey;
-    Cashfree.XEnvironment = cashfreeEnv;
-    Cashfree.XAPIVersion = CASHFREE_API_VERSION; // Set API version for SDK instance
-    console.log('Cashfree Info: SDK configured globally.');
+    // Initialize using the V5+ constructor style
+    const config: CashfreeConfig = {
+        env: cashfreeEnv,
+        appId: appId,
+        secretKey: secretKey,
+        apiVersion: CASHFREE_API_VERSION // Optional: specify API version
+    };
+    cashfreeInstance = new Cashfree(config);
+    console.log('Cashfree Info: SDK instance created successfully.');
   } catch (configError: any) {
-    console.error('Cashfree Error: Error during Cashfree SDK configuration:', configError);
-    return { success: false, error: `Payment SDK configuration error: ${configError.message || 'Unknown configuration error.'}` };
+    console.error('Cashfree Error: Error during Cashfree SDK instantiation:', configError);
+    return { success: false, error: `Payment SDK initialization error: ${configError.message || 'Failed to create SDK instance.'}` };
   }
 
+   // **Crucial Check:** Verify if the SDK initialized correctly and has the necessary methods
+   if (!cashfreeInstance || typeof cashfreeInstance.orders?.create !== 'function') {
+       console.error('Cashfree Error: SDK initialization failed or required methods (orders.create) are missing.');
+       // Return the specific error message the user reported seeing
+       return { success: false, error: 'Payment SDK initialization error: Payment SDK failed to initialize properly (missing orders property).' };
+   }
 
   const orderId = `GEPTO-${uuidv4()}`; // Generate a unique order ID
 
   // Construct return URL, ensuring HTTPS as required by Cashfree
   let appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:9002';
 
+  // Force HTTPS for the return URL
   if (appUrl.startsWith('http://')) {
-      // Cashfree requires HTTPS for the return_url. Replace http:// with https://.
-      // The user needs to ensure their development environment (if testing redirects) handles HTTPS, e.g., via a tunnel like ngrok or local HTTPS setup.
       console.warn(`Cashfree Warning: App URL (${appUrl}) uses http. Forcing https for Cashfree return_url. Ensure your environment supports https for testing redirects.`);
       appUrl = appUrl.replace('http://', 'https://');
   } else if (!appUrl.startsWith('https://')) {
        console.warn(`Cashfree Warning: App URL (${appUrl}) does not specify a protocol. Assuming https for Cashfree return_url.`);
-       // Add https if no protocol is specified
-      appUrl = `https://${appUrl}`;
+       appUrl = `https://${appUrl}`;
   }
 
   const returnUrl = `${appUrl}/order/status?order_id=${orderId}`; // URL to redirect after payment
@@ -105,10 +116,10 @@ export async function initiatePayment(
       order_expiry_time: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
     };
 
-    console.log('Cashfree Info: Creating order with request:', request);
+    console.log('Cashfree Info: Creating order with request:', JSON.stringify(request, null, 2)); // Log the full request for debugging
 
-    // Use the static PGCreateOrder method (implicitly uses configured version)
-    const response = await Cashfree.PGCreateOrder(request);
+    // Use the instance method 'orders.create' from the initialized 'cashfreeInstance' object
+    const response = await cashfreeInstance.orders.create(request);
 
     console.log('Cashfree Info: Order creation response received.');
     // Avoid logging sensitive parts of the response in production if possible
@@ -131,7 +142,7 @@ export async function initiatePayment(
       return { success: false, error: errorMessage };
     }
   } catch (error: any) {
-    console.error('Cashfree Error: Error during order creation:', error);
+    console.error('Cashfree Error: Exception during order creation:', error);
 
     // Improved error handling for Cashfree specific responses
     let errorMessage = 'An unexpected error occurred during payment initiation.';
