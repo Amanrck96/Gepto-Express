@@ -16,13 +16,13 @@ const nextConfig: NextConfig = {
         port: '',
         pathname: '/**',
       },
-      // Add example.com for placeholder images used in services (if still needed)
-      // {
-      //   protocol: 'https',
-      //   hostname: 'example.com',
-      //   port: '',
-      //   pathname: '/**',
-      // }
+      // Add example.com for placeholder images used in services
+      {
+        protocol: 'https',
+        hostname: 'example.com',
+        port: '',
+        pathname: '/**',
+      }
     ],
   },
    // Make environment variables available to the client-side if necessary
@@ -30,10 +30,10 @@ const nextConfig: NextConfig = {
    // remain server-side unless explicitly required by a client-side SDK.
    // Cashfree SDK `load` function might need the mode ('sandbox'/'production')
    // but not necessarily the keys themselves on the client.
-  // env: {
+  env: {
     // NEXT_PUBLIC_CASHFREE_MODE: process.env.NODE_ENV === 'production' ? 'production' : 'sandbox',
-    // NEXT_PUBLIC_APP_URL: process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:9002',
-  // },
+    NEXT_PUBLIC_APP_URL: process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:9002', // Ensure this is set for return URLs
+  },
 };
 
 export default nextConfig;
