@@ -58,6 +58,7 @@ export async function initiatePayment(
     Cashfree.XClientId = appId;
     Cashfree.XClientSecret = secretKey;
     Cashfree.XEnvironment = cashfreeEnv;
+    Cashfree.XAPIVersion = CASHFREE_API_VERSION; // Set API version for SDK instance
     console.log('Cashfree Info: SDK configured globally.');
   } catch (configError: any) {
     console.error('Cashfree Error: Error during Cashfree SDK configuration:', configError);
@@ -66,7 +67,23 @@ export async function initiatePayment(
 
 
   const orderId = `GEPTO-${uuidv4()}`; // Generate a unique order ID
-  const returnUrl = `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:9002'}/order/status?order_id=${orderId}`; // URL to redirect after payment
+
+  // Construct return URL, ensuring HTTPS as required by Cashfree
+  let appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:9002';
+
+  if (appUrl.startsWith('http://')) {
+      // Cashfree requires HTTPS for the return_url. Replace http:// with https://.
+      // The user needs to ensure their development environment (if testing redirects) handles HTTPS, e.g., via a tunnel like ngrok or local HTTPS setup.
+      console.warn(`Cashfree Warning: App URL (${appUrl}) uses http. Forcing https for Cashfree return_url. Ensure your environment supports https for testing redirects.`);
+      appUrl = appUrl.replace('http://', 'https://');
+  } else if (!appUrl.startsWith('https://')) {
+       console.warn(`Cashfree Warning: App URL (${appUrl}) does not specify a protocol. Assuming https for Cashfree return_url.`);
+       // Add https if no protocol is specified
+      appUrl = `https://${appUrl}`;
+  }
+
+  const returnUrl = `${appUrl}/order/status?order_id=${orderId}`; // URL to redirect after payment
+
 
   try {
     const request = {
@@ -81,7 +98,7 @@ export async function initiatePayment(
       },
       order_meta: {
         return_url: returnUrl,
-        // notify_url: `${process.env.NEXT_PUBLIC_APP_URL}/api/webhooks/cashfree`, // Optional: Server-to-server notification URL
+        // notify_url: `${appUrl}/api/webhooks/cashfree`, // Optional: Server-to-server notification URL also needs HTTPS
       },
       order_note: `Order from Gepto Express for ${items.length} items.`,
        // Optional: Add expiry time (e.g., 15 minutes)
@@ -90,8 +107,8 @@ export async function initiatePayment(
 
     console.log('Cashfree Info: Creating order with request:', request);
 
-    // Use the static PGCreateOrder method with the API version (v4 style)
-    const response = await Cashfree.PGCreateOrder(CASHFREE_API_VERSION, request);
+    // Use the static PGCreateOrder method (implicitly uses configured version)
+    const response = await Cashfree.PGCreateOrder(request);
 
     console.log('Cashfree Info: Order creation response received.');
     // Avoid logging sensitive parts of the response in production if possible
@@ -139,4 +156,3 @@ export async function initiatePayment(
     return { success: false, error: errorMessage };
   }
 }
-
