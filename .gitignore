@@ -1,3 +1,4 @@
+
 # See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
 
 # dependencies
@@ -24,34 +25,27 @@
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
-.pnpm-debug.log*
+pnpm-debug.log*
 
 # local env files
 .env*.local
+.env
 
 # vercel
 .vercel
 
-# turbo
-.turbo
-
 # typescript
 *.tsbuildinfo
-tsconfig.tsbuildinfo
+next-env.d.ts
 
-# eslint
-.eslintcache
-
-# Patch-package
+# Temporary patch files
 patches/
-# Firebase emulators
+
+# Firebase Emulator
 firebase-debug.log
-*.snapshot
-firestore.indexes.json
+*.log
 database-debug.log
+firestore-debug.log
 pubsub-debug.log
 storage-debug.log
 ui-debug.log
-
-# Crashlytics Android NDK
-.cxx/
