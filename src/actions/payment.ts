@@ -1,14 +1,9 @@
+
 'use server';
 
 import { Cashfree } from 'cashfree-pg';
 import { v4 as uuidv4 } from 'uuid';
 import type { CartItem } from '@/app/page'; // Assuming CartItem type is exported from page.tsx
-
-// Initialize Cashfree
-// IMPORTANT: Ensure these environment variables are set in your deployment environment.
-Cashfree.XClientId = process.env.CASHFREE_APP_ID!;
-Cashfree.XClientSecret = process.env.CASHFREE_SECRET_KEY!;
-Cashfree.XEnvironment = Cashfree.Environment.PRODUCTION; // Or Cashfree.Environment.SANDBOX for testing
 
 // Define input structure for the payment initiation
 interface InitiatePaymentInput {
@@ -45,6 +40,14 @@ export async function initiatePayment(
       return { success: false, error: 'Invalid order amount.' };
   }
 
+  // Initialize Cashfree with credentials
+  const cashfree = new Cashfree({
+    api_key: process.env.CASHFREE_APP_ID!,
+    api_secret: process.env.CASHFREE_SECRET_KEY!,
+    env: 'PRODUCTION', // Or 'SANDBOX' based on your environment
+  });
+
+
   const orderId = `GEPTO-${uuidv4()}`; // Generate a unique order ID
   const returnUrl = `${process.env.NEXT_PUBLIC_APP_URL}/order/status?order_id=${orderId}`; // URL to redirect after payment
 
@@ -70,7 +73,8 @@ export async function initiatePayment(
 
     console.log('Cashfree Order Request:', request);
 
-    const response = await Cashfree.PGOrderCreate(request);
+    // Use the instantiated cashfree object to call PGOrderCreate
+    const response = await cashfree.orders.create(request);
 
     console.log('Cashfree Order Response:', response.data);
 
@@ -92,7 +96,18 @@ export async function initiatePayment(
   } catch (error: any) {
     console.error('Error initiating payment:', error);
     // Check for Cashfree specific error structure
-    const errorMessage = error.response?.data?.message || error.message || 'An unexpected error occurred during payment initiation.';
+     // Improved error handling for Cashfree specific responses
+    let errorMessage = 'An unexpected error occurred during payment initiation.';
+    if (error.response && error.response.data && error.response.data.message) {
+        errorMessage = error.response.data.message;
+         if (error.response.data.code) {
+             errorMessage += ` (Code: ${error.response.data.code})`;
+         }
+    } else if (error.message) {
+        errorMessage = error.message;
+    }
+    console.error('Detailed Cashfree Error:', error.response?.data || error);
     return { success: false, error: errorMessage };
   }
 }
+

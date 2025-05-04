@@ -1,11 +1,7 @@
+
 'use server';
 
 import { Cashfree } from 'cashfree-pg';
-
-// Initialize Cashfree - Ensure environment variables are set
-Cashfree.XClientId = process.env.CASHFREE_APP_ID!;
-Cashfree.XClientSecret = process.env.CASHFREE_SECRET_KEY!;
-Cashfree.XEnvironment = Cashfree.Environment.PRODUCTION; // Or Cashfree.Environment.SANDBOX
 
 interface OrderStatusResponse {
   success: boolean;
@@ -25,9 +21,17 @@ export async function getOrderStatus(orderId: string): Promise<OrderStatusRespon
     return { success: false, error: 'Order ID is required.' };
   }
 
+   // Initialize Cashfree with credentials
+   const cashfree = new Cashfree({
+    api_key: process.env.CASHFREE_APP_ID!,
+    api_secret: process.env.CASHFREE_SECRET_KEY!,
+    env: 'PRODUCTION', // Or 'SANDBOX' based on your environment
+  });
+
   try {
     console.log(`Cashfree Get Order Request for order_id: ${orderId}`);
-    const response = await Cashfree.PGOrderFetch(orderId);
+    // Use the instantiated cashfree object to call orders.fetch
+    const response = await cashfree.orders.fetch(orderId);
     console.log('Cashfree Get Order Response:', response.data);
 
     if (response.data) {
@@ -58,8 +62,22 @@ export async function getOrderStatus(orderId: string): Promise<OrderStatusRespon
   } catch (error: any) {
     console.error(`Error fetching status for order ${orderId}:`, error);
     // Handle specific Cashfree errors if possible (e.g., 404 for order not found)
-     const statusCode = error.response?.status;
-     const errorMessage = error.response?.data?.message || error.message || 'An unexpected error occurred while fetching order status.';
+     let errorMessage = 'An unexpected error occurred while fetching order status.';
+     let statusCode: number | undefined;
+
+     if (error.response) {
+        statusCode = error.response.status;
+        if (error.response.data && error.response.data.message) {
+             errorMessage = error.response.data.message;
+             if (error.response.data.code) {
+                errorMessage += ` (Code: ${error.response.data.code})`;
+             }
+        }
+        console.error('Detailed Cashfree Error:', error.response.data || error);
+     } else if (error.message) {
+        errorMessage = error.message;
+     }
+
 
      if (statusCode === 404) {
         return { success: false, error: 'Order not found.' };
@@ -68,3 +86,4 @@ export async function getOrderStatus(orderId: string): Promise<OrderStatusRespon
     return { success: false, error: errorMessage };
   }
 }
+
