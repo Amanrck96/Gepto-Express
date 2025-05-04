@@ -56,28 +56,29 @@ export async function initiatePayment(
 
   console.log(`Cashfree Info: Configuring Cashfree SDK in ${cashfreeEnv === Cashfree.Environment.PRODUCTION ? 'PRODUCTION' : 'SANDBOX'} mode.`);
 
-  let cashfreeInstance: Cashfree; // Use the type from the SDK
   try {
     // Initialize using the V5+ constructor style
+    // This configures the SDK internally for subsequent static calls
     const config: CashfreeConfig = {
         env: cashfreeEnv,
         appId: appId,
         secretKey: secretKey,
         apiVersion: CASHFREE_API_VERSION // Optional: specify API version
     };
-    cashfreeInstance = new Cashfree(config);
-    console.log('Cashfree Info: SDK instance created successfully.');
+    // Create instance to configure SDK (even if using static methods later)
+    const cashfreeInstance = new Cashfree(config);
+    if (!cashfreeInstance) {
+         throw new Error('Failed to instantiate Cashfree SDK.');
+    }
+    console.log('Cashfree Info: SDK instance created and configured.');
+
   } catch (configError: any) {
     console.error('Cashfree Error: Error during Cashfree SDK instantiation:', configError);
+    // Return the specific error message if available
     return { success: false, error: `Payment SDK initialization error: ${configError.message || 'Failed to create SDK instance.'}` };
   }
 
-   // **Crucial Check:** Verify if the SDK initialized correctly and has the necessary methods
-   if (!cashfreeInstance || typeof cashfreeInstance.orders?.create !== 'function') {
-       console.error('Cashfree Error: SDK initialization failed or required methods (orders.create) are missing.');
-       // Return the specific error message the user reported seeing
-       return { success: false, error: 'Payment SDK initialization error: Payment SDK failed to initialize properly (missing orders property).' };
-   }
+   // Removed the check for 'cashfreeInstance.orders.create' as we will use the static method.
 
   const orderId = `GEPTO-${uuidv4()}`; // Generate a unique order ID
 
@@ -118,8 +119,9 @@ export async function initiatePayment(
 
     console.log('Cashfree Info: Creating order with request:', JSON.stringify(request, null, 2)); // Log the full request for debugging
 
-    // Use the instance method 'orders.create' from the initialized 'cashfreeInstance' object
-    const response = await cashfreeInstance.orders.create(request);
+    // *** Use the static method 'PGCreateOrder' from the Cashfree class ***
+    // The SDK should be configured by the 'new Cashfree(config)' call above.
+    const response = await Cashfree.PGCreateOrder(request);
 
     console.log('Cashfree Info: Order creation response received.');
     // Avoid logging sensitive parts of the response in production if possible
@@ -139,6 +141,10 @@ export async function initiatePayment(
       // Handle potential errors or unexpected responses from Cashfree
       const errorMessage = response?.data?.message || 'Failed to create payment session (no session ID received).';
       console.error('Cashfree Error: Failed to create payment session.', response?.data || 'No data in response');
+      // Provide a more specific error if the SDK itself failed earlier
+       if (!Cashfree.PGCreateOrder) {
+           return { success: false, error: 'Payment SDK error: PGCreateOrder method not found.' };
+       }
       return { success: false, error: errorMessage };
     }
   } catch (error: any) {
@@ -159,6 +165,10 @@ export async function initiatePayment(
         if (!error.response) {
             console.error('Cashfree Error: Non-API Error details:', error);
         }
+         // Check if the error message relates to the SDK initialization problem seen before
+         if (errorMessage.includes('Cashfree.PGCreateOrder is not a function')) {
+            errorMessage = 'Payment SDK initialization error: Payment SDK failed to initialize properly (CreateOrder method missing).'
+         }
     } else {
          // Fallback for unknown error structure
          console.error('Cashfree Error: Unknown error structure:', error);

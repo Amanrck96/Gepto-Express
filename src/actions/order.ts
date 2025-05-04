@@ -19,8 +19,8 @@ export async function getOrderStatus(orderId: string): Promise<OrderStatusRespon
   const secretKey = process.env.CASHFREE_SECRET_KEY;
 
   if (!appId || !secretKey) {
-    console.error('Cashfree API keys are not configured.');
-    return { success: false, error: 'Payment gateway configuration error.' };
+    console.error('Cashfree Error: CASHFREE_APP_ID or CASHFREE_SECRET_KEY are not configured.');
+    return { success: false, error: 'Payment gateway configuration error. Server environment variables missing.' };
   }
 
   if (!orderId) {
@@ -33,32 +33,33 @@ export async function getOrderStatus(orderId: string): Promise<OrderStatusRespon
                         : Cashfree.Environment.SANDBOX;
    console.log(`Cashfree Info: Configuring Cashfree SDK in ${cashfreeEnv === Cashfree.Environment.PRODUCTION ? 'PRODUCTION' : 'SANDBOX'} mode for order status check.`);
 
-   let cashfreeInstance: Cashfree;
    try {
      // Initialize using the V5+ constructor style
+     // This configures the SDK internally for subsequent static calls
      const config: CashfreeConfig = {
          env: cashfreeEnv,
          appId: appId,
          secretKey: secretKey,
          apiVersion: CASHFREE_API_VERSION // Optional
      };
-     cashfreeInstance = new Cashfree(config);
-     console.log('Cashfree Info: SDK instance created successfully for order status check.');
+     // Create instance to configure SDK (even if using static methods later)
+      const cashfreeInstance = new Cashfree(config);
+      if (!cashfreeInstance) {
+            throw new Error('Failed to instantiate Cashfree SDK.');
+      }
+     console.log('Cashfree Info: SDK instance created and configured successfully for order status check.');
    } catch (configError: any) {
      console.error('Cashfree Error: Error during Cashfree SDK instantiation for order status:', configError);
      return { success: false, error: `Payment SDK configuration error: ${configError.message || 'Failed to create SDK instance.'}` };
    }
 
-   // **Crucial Check:** Verify if the SDK initialized correctly and has the necessary methods
-    if (!cashfreeInstance || typeof cashfreeInstance.orders?.get !== 'function') {
-        console.error('Cashfree Error: SDK initialization failed or required methods (orders.get) are missing for status check.');
-        return { success: false, error: 'Payment SDK initialization error: Failed to initialize properly for status check.' };
-    }
+   // Removed the check for 'cashfreeInstance.orders.get' as we will use the static method.
 
   try {
     console.log(`Cashfree Get Order Request for order_id: ${orderId}`);
-    // Use the instance method 'orders.get' from the initialized 'cashfreeInstance' object
-    const response = await cashfreeInstance.orders.get(orderId);
+    // *** Use the static method 'PGFetchOrder' from the Cashfree class ***
+    // The SDK should be configured by the 'new Cashfree(config)' call above.
+    const response = await Cashfree.PGFetchOrder(orderId);
     console.log('Cashfree Get Order Response:', response.data);
 
     if (response.data) {
@@ -84,6 +85,10 @@ export async function getOrderStatus(orderId: string): Promise<OrderStatusRespon
     } else {
       // This case might indicate a network issue or unexpected empty response
       console.error(`Cashfree returned no data for order ${orderId}`);
+       // Provide a more specific error if the SDK itself failed earlier
+       if (!Cashfree.PGFetchOrder) {
+           return { success: false, error: 'Payment SDK error: PGFetchOrder method not found.' };
+       }
       return { success: false, error: 'No data received from payment gateway.' };
     }
   } catch (error: any) {
@@ -103,6 +108,10 @@ export async function getOrderStatus(orderId: string): Promise<OrderStatusRespon
         console.error('Detailed Cashfree Error:', error.response.data || error);
      } else if (error.message) {
         errorMessage = error.message;
+         // Check if the error message relates to the SDK initialization problem
+         if (errorMessage.includes('Cashfree.PGFetchOrder is not a function')) {
+             errorMessage = 'Payment SDK initialization error: Payment SDK failed to initialize properly (FetchOrder method missing).'
+         }
      }
 
 
