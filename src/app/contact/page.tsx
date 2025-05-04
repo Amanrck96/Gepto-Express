@@ -1,8 +1,11 @@
+'use client'; // Add this directive
+
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
+import React from 'react'; // Import React
 
 export default function ContactPage() {
   // Placeholder for form submission logic
