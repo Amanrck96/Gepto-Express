@@ -26,7 +26,7 @@ interface InitiatePaymentResponse {
   redirectUrl?: string; // In case direct redirect is needed
 }
 
-// Define the Cashfree API version date (required for v4 SDK, optional but good practice for v5+)
+// Define the Cashfree API version date (required for v4 SDK)
 const CASHFREE_API_VERSION = "2023-08-01";
 
 export async function initiatePayment(
@@ -60,22 +60,22 @@ export async function initiatePayment(
   console.log(`Cashfree Info: Configuring Cashfree SDK in ${cashfreeEnv === Cashfree.Environment.PRODUCTION ? 'PRODUCTION' : 'SANDBOX'} mode.`);
 
   try {
-    // Initialize Cashfree SDK using the V5+ constructor style
-    // This configures the SDK globally for subsequent static method calls
-    const config: CashfreeConfig = {
-        env: cashfreeEnv,
-        appId: appId,
-        secretKey: secretKey,
-        apiVersion: CASHFREE_API_VERSION // Optional: specify API version
-    };
-    // Create instance to configure SDK globally (no need to store the instance variable)
-    new Cashfree(config);
-    console.log('Cashfree Info: SDK globally configured.');
+    // --- SDK v4.x Configuration ---
+    // Set credentials and environment directly on the Cashfree class
+    Cashfree.XClientId = appId;
+    Cashfree.XClientSecret = secretKey;
+    Cashfree.XEnvironment = cashfreeEnv;
+    // Cashfree.XApiVersion = CASHFREE_API_VERSION; // Optional, but good practice for v4
+
+    console.log('Cashfree Info: SDK v4.x configured using static properties.');
+    // Check if static properties are set (basic sanity check)
+     if (!Cashfree.XClientId || !Cashfree.XClientSecret) {
+        throw new Error('Failed to set Cashfree static configuration properties.');
+     }
 
   } catch (configError: any) {
-    console.error('Cashfree Error: Error during Cashfree SDK instantiation:', configError);
-    // Return the specific error message if available
-    return { success: false, error: `Payment SDK initialization error: ${configError.message || 'Failed to create SDK instance.'}` };
+    console.error('Cashfree Error: Error during Cashfree SDK v4.x configuration:', configError);
+    return { success: false, error: `Payment SDK configuration error: ${configError.message || 'Failed to configure SDK.'}` };
   }
 
   const orderId = `GEPTO-${uuidv4()}`; // Generate a unique order ID
@@ -83,22 +83,31 @@ export async function initiatePayment(
   // Construct return URL, ensuring HTTPS as required by Cashfree
   let appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:9002';
 
-  // Force HTTPS for the return URL in production or if explicitly set
-  // Allow HTTP only for localhost development if NEXT_PUBLIC_APP_URL starts with http://localhost
-  if (!appUrl.startsWith('http://localhost') && !appUrl.startsWith('https://')) {
-     // If not localhost and not https, force https
-     if (appUrl.startsWith('http://')) {
-       console.warn(`Cashfree Warning: App URL (${appUrl}) uses http. Forcing https for Cashfree return_url.`);
-       appUrl = appUrl.replace('http://', 'https://');
-     } else {
-       console.warn(`Cashfree Warning: App URL (${appUrl}) does not specify a protocol. Assuming https for Cashfree return_url.`);
-       appUrl = `https://${appUrl}`;
-     }
-  } else if (appUrl.startsWith('http://') && !appUrl.startsWith('http://localhost')) {
-      // If it starts with http:// but is NOT localhost, force https
-      console.warn(`Cashfree Warning: App URL (${appUrl}) uses http. Forcing https for Cashfree return_url as it's not localhost.`);
-      appUrl = appUrl.replace('http://', 'https://');
+  // --- HTTPS Enforcement for return URL ---
+   // Use HTTPS for production or if NEXT_PUBLIC_APP_URL starts with https
+  if (process.env.NODE_ENV === 'production' || appUrl.startsWith('https://')) {
+      if (appUrl.startsWith('http://')) {
+          console.warn(`Cashfree Warning: App URL (${appUrl}) uses http in production/explicitly. Forcing https for Cashfree return_url.`);
+          appUrl = appUrl.replace('http://', 'https://');
+      } else if (!appUrl.startsWith('https://')) {
+          console.warn(`Cashfree Warning: App URL (${appUrl}) does not specify a protocol. Assuming https for Cashfree return_url.`);
+          appUrl = `https://${appUrl}`;
+      }
+  } else if (appUrl.startsWith('http://localhost')) {
+      // Allow http only for localhost during development
+       console.log(`Cashfree Info: Using HTTP return URL for localhost development: ${appUrl}`);
   }
+   else if (appUrl.startsWith('http://')) {
+      // Force HTTPS if it's http but *not* localhost
+       console.warn(`Cashfree Warning: App URL (${appUrl}) uses http. Forcing https for Cashfree return_url as it's not localhost.`);
+       appUrl = appUrl.replace('http://', 'https://');
+   }
+   else {
+      // Default to HTTPS if protocol is missing and not localhost
+      console.warn(`Cashfree Warning: App URL (${appUrl}) does not specify a protocol. Assuming https for Cashfree return_url.`);
+      appUrl = `https://${appUrl}`;
+   }
+  // --- End HTTPS Enforcement ---
 
 
   const returnUrl = `${appUrl}/order/status?order_id=${orderId}`; // URL to redirect after payment
@@ -127,30 +136,26 @@ export async function initiatePayment(
     // **Diagnosis Step 1: Check if the request object itself is null/undefined**
     if (!request) {
         console.error('Cashfree FATAL Error: The constructed `request` object is unexpectedly null or undefined before calling PGCreateOrder.');
-        // This case should ideally not happen based on the code, but adding a safeguard.
         return { success: false, error: 'Internal server error: Failed to construct payment request data.' };
     }
 
     // **Diagnosis Step 2: Log the exact request object being sent**
-    // Use JSON.stringify to ensure all nested properties are logged clearly.
     console.log('Cashfree Info: Preparing to call PGCreateOrder with request object:', JSON.stringify(request, null, 2));
+    console.log(`Cashfree Info: Using API Version: ${CASHFREE_API_VERSION}`);
+
 
     // **Diagnosis Step 3: Check if the static method exists on the Cashfree class**
-    // This helps confirm the SDK is loaded and configured correctly to the point where static methods are available.
     if (typeof Cashfree.PGCreateOrder !== 'function') {
         console.error('Cashfree FATAL Error: Static method `Cashfree.PGCreateOrder` not found. SDK might be improperly initialized, version mismatch, or corrupted installation.');
         return { success: false, error: 'Payment SDK configuration error: CreateOrder method is not available. Please check server logs.' };
     }
 
-    console.log('Cashfree Info: Static method `Cashfree.PGCreateOrder` found. Proceeding with API call.');
+    console.log('Cashfree Info: Static method `Cashfree.PGCreateOrder` found. Proceeding with API call (v4.x style).');
 
-    // *** Use the static method 'PGCreateOrder' from the Cashfree class ***
-    const response = await Cashfree.PGCreateOrder(request); // Pass the validated and logged request object
+    // *** Use the static method 'PGCreateOrder' with API version as the first argument (v4.x SDK style) ***
+    const response = await Cashfree.PGCreateOrder(CASHFREE_API_VERSION, request); // Pass API version first, then request
 
     console.log('Cashfree Info: Order creation response received.');
-    // Avoid logging sensitive parts of the response in production if possible
-    // console.log('Cashfree Order Response:', response.data);
-
 
     if (response.data && response.data.payment_session_id) {
       console.log(`Cashfree Info: Successfully created payment session: ${response.data.payment_session_id} for order: ${orderId}`);
@@ -158,11 +163,8 @@ export async function initiatePayment(
         success: true,
         payment_session_id: response.data.payment_session_id,
         order_id: orderId,
-        // Optionally return redirectUrl if using redirection method
-        // redirectUrl: response.data.payment_link or similar if needed
       };
     } else {
-      // Handle potential errors or unexpected responses from Cashfree *after* the call
       const errorMessage = response?.data?.message || 'Failed to create payment session (no session ID received).';
       console.error('Cashfree Error: Failed to create payment session after API call.', response?.data || 'No data in response');
       return { success: false, error: errorMessage };
@@ -170,42 +172,41 @@ export async function initiatePayment(
   } catch (error: any) {
     console.error('Cashfree Error: Exception during PGCreateOrder call:', error);
 
-    // Improved error handling for Cashfree specific responses vs other errors
     let errorMessage = 'An unexpected error occurred during payment initiation.';
     if (error.response && error.response.data && error.response.data.message) {
-        // Error is likely from the Cashfree API itself (e.g., validation error)
+        // Error is likely from the Cashfree API itself
         errorMessage = error.response.data.message;
          if (error.response.data.code) {
              errorMessage += ` (Code: ${error.response.data.code})`;
          }
          console.error('Cashfree Error: Detailed API Error:', error.response.data);
-         // **Check if the specific error message matches the user report**
-         if (error.message && error.message.includes('Required parameter CreateOrderRequest was null or undefined')) {
-             console.error('Cashfree Diagnosis: Received the "CreateOrderRequest was null or undefined" error. Check the logged request object above for potential issues.');
-             // Provide a more user-friendly error in this specific case
-             errorMessage = 'Payment gateway rejected the request. Please ensure all details (amount, customer info) are correct.';
+         // Specific check for the "null or undefined" error originating from the API response (less likely for this exact message)
+         if (errorMessage.includes('Required parameter CreateOrderRequest was null or undefined')) {
+             console.error('Cashfree Diagnosis: API returned "CreateOrderRequest was null or undefined". Check the logged request object.');
+             errorMessage = 'Payment gateway rejected the request. Please ensure all details are correct.';
          }
 
-    } else if (error.message) { // Handle errors not from Cashfree API (e.g., network, SDK internal, coding errors)
+    } else if (error.message) { // Handle errors not from Cashfree API
         errorMessage = error.message;
-        // Log the full error object if it's not a standard Cashfree response error
         if (!error.response) {
             console.error('Cashfree Error: Non-API Error details:', error);
         }
-        // Check if the error message relates to the SDK initialization or method availability
+        // Check if the error message relates to SDK issues
          if (errorMessage.includes('Cashfree.PGCreateOrder is not a function')) {
              errorMessage = 'Payment SDK initialization error: CreateOrder method missing.'
          } else if (errorMessage.includes('Required parameter CreateOrderRequest was null or undefined')) {
-             // This might occur if the SDK throws before even making the API call
-             console.error('Cashfree Diagnosis: SDK threw "CreateOrderRequest was null or undefined" error *before* API call. This indicates the `request` object passed to `PGCreateOrder` was likely invalid (e.g., null, undefined, or wrong type).');
-             errorMessage = 'Internal server error: Invalid payment request data constructed.';
+             // This is the most likely path for the current user error
+             console.error('Cashfree Diagnosis: SDK likely threw "CreateOrderRequest was null or undefined" error *before* API call. This often happens if the API version argument is missing or incorrect for the SDK version being used (e.g., v4.x). Verify the `Cashfree.PGCreateOrder(apiVersion, request)` call signature.');
+             errorMessage = 'Internal server error: Invalid payment request data or SDK call signature.';
+         } else if (errorMessage.includes('Payment SDK failed to initialize properly')) {
+             // Catching the specific error from the previous step
+              console.error('Cashfree Diagnosis: SDK initialization failed, possibly due to configuration issues (check static properties like XClientId, XClientSecret, XEnvironment) or internal SDK problems.');
+              errorMessage = 'Payment SDK initialization failed. Check server configuration.';
          }
     } else {
-         // Fallback for unknown error structure
          console.error('Cashfree Error: Unknown error structure:', error);
     }
 
     return { success: false, error: errorMessage };
   }
 }
-
