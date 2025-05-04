@@ -11,8 +11,15 @@ interface OrderStatusResponse {
   error?: string;
 }
 
+// Define the Cashfree API version date (required for v4 SDK)
+// Use a recent, valid version date from Cashfree docs if needed.
+const CASHFREE_API_VERSION = "2023-08-01";
+
 export async function getOrderStatus(orderId: string): Promise<OrderStatusResponse> {
-  if (!process.env.CASHFREE_APP_ID || !process.env.CASHFREE_SECRET_KEY) {
+  const appId = process.env.CASHFREE_APP_ID;
+  const secretKey = process.env.CASHFREE_SECRET_KEY;
+
+  if (!appId || !secretKey) {
     console.error('Cashfree API keys are not configured.');
     return { success: false, error: 'Payment gateway configuration error.' };
   }
@@ -21,17 +28,25 @@ export async function getOrderStatus(orderId: string): Promise<OrderStatusRespon
     return { success: false, error: 'Order ID is required.' };
   }
 
-   // Initialize Cashfree with credentials
-   const cashfree = new Cashfree({
-    api_key: process.env.CASHFREE_APP_ID!,
-    api_secret: process.env.CASHFREE_SECRET_KEY!,
-    env: 'PRODUCTION', // Or 'SANDBOX' based on your environment
-  });
+   // Configure Cashfree SDK globally for static methods (v4 style)
+   // Determine environment - Use PRODUCTION since production keys were provided
+   const cashfreeEnv = Cashfree.Environment.PRODUCTION; // Use Enum for safety
+   console.log(`Cashfree Info: Configuring Cashfree SDK in ${cashfreeEnv === Cashfree.Environment.PRODUCTION ? 'PRODUCTION' : 'SANDBOX'} mode for order status check.`);
+
+   try {
+     Cashfree.XClientId = appId;
+     Cashfree.XClientSecret = secretKey;
+     Cashfree.XEnvironment = cashfreeEnv;
+     console.log('Cashfree Info: SDK configured globally for order status check.');
+   } catch (configError: any) {
+     console.error('Cashfree Error: Error during Cashfree SDK configuration for order status:', configError);
+     return { success: false, error: `Payment SDK configuration error: ${configError.message || 'Unknown configuration error.'}` };
+   }
 
   try {
     console.log(`Cashfree Get Order Request for order_id: ${orderId}`);
-    // Use the instantiated cashfree object to call orders.fetch
-    const response = await cashfree.orders.fetch(orderId);
+    // Use the static PGFetchOrder method with the API version (v4 style)
+    const response = await Cashfree.PGFetchOrder(CASHFREE_API_VERSION, orderId);
     console.log('Cashfree Get Order Response:', response.data);
 
     if (response.data) {

@@ -1,3 +1,4 @@
+
 'use client'; // Needed for hooks like useState, useEffect
 
 import React, { useState, useEffect } from 'react';
@@ -42,9 +43,9 @@ export default function Home() {
 
   const { toast } = useToast();
 
-  // Initialize Cashfree SDK on component mount
+  // Initialize Cashfree Drop-in SDK on component mount
    useEffect(() => {
-    async function initializeCashfree() {
+    async function initializeCashfreeDropin() {
       try {
         // Determine environment based on hostname or an env variable if preferred
         const isProduction = window.location.hostname !== 'localhost'; // Example check
@@ -52,17 +53,17 @@ export default function Home() {
             mode: isProduction ? "production" : "sandbox" // Use "sandbox" for testing, "production" for live
         });
         setCashfreeInstance(cashfree);
-        console.log('Cashfree SDK Initialized');
+        console.log('Cashfree Drop-in SDK Initialized');
       } catch (error) {
-        console.error("Failed to initialize Cashfree SDK:", error);
+        console.error("Failed to initialize Cashfree Drop-in SDK:", error);
         toast({
           title: "Payment Error",
-          description: "Could not initialize the payment gateway. Please try again later.",
+          description: "Could not initialize the payment interface. Please try again later.",
           variant: "destructive",
         });
       }
     }
-    initializeCashfree();
+    initializeCashfreeDropin();
    }, [toast]); // Dependency array includes toast to potentially show errors
 
 
@@ -230,7 +231,7 @@ export default function Home() {
      if (!cashfreeInstance) {
        toast({
          title: "Payment Error",
-         description: "Payment gateway is not ready. Please wait a moment and try again.",
+         description: "Payment interface is not ready. Please wait a moment and try again.",
          variant: "destructive",
        });
        return;
@@ -257,13 +258,16 @@ export default function Home() {
           throw new Error("Invalid cart total.");
        }
 
+       console.log('Initiating payment server action...');
        const response = await initiatePayment({
          items: cart,
          totalAmount: total,
          customerDetails: customerDetails,
        });
+       console.log('Server action response:', response);
 
-       if (response.success && response.payment_session_id) {
+
+       if (response.success && response.payment_session_id && response.order_id) {
          console.log('Payment session created:', response.payment_session_id);
          // Use the Cashfree Drop-in SDK
          cashfreeInstance.checkout({
@@ -273,9 +277,10 @@ export default function Home() {
             // display: { backdrop: true, hideIcon: false },
             // style: { color: '#ffffff', backgroundColor: '#006400' } // Example styling
          });
-         // The SDK handles the rest (showing payment options, redirection, etc.)
+         // The Drop-in SDK handles the rest (showing payment options, redirection, etc.)
        } else {
-         throw new Error(response.error || 'Failed to initiate payment.');
+         // Throw error received from the server action
+         throw new Error(response.error || 'Failed to initiate payment. Check server logs for details.');
        }
      } catch (error: any) {
        console.error('Checkout error:', error);
@@ -445,7 +450,7 @@ export default function Home() {
                 <Button
                     onClick={handleCheckout}
                     className="w-full transition-transform active:scale-95"
-                    disabled={isCheckingOut || !cashfreeInstance} // Disable button during checkout or if SDK not ready
+                    disabled={isCheckingOut || !cashfreeInstance} // Disable button during checkout or if drop-in SDK not ready
                     aria-live="polite" // Announce loading state change
                 >
                    {isCheckingOut ? (

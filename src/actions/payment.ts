@@ -26,6 +26,10 @@ interface InitiatePaymentResponse {
   redirectUrl?: string; // In case direct redirect is needed
 }
 
+// Define the Cashfree API version date (required for v4 SDK)
+// Use a recent, valid version date from Cashfree docs if needed.
+const CASHFREE_API_VERSION = "2023-08-01";
+
 export async function initiatePayment(
   input: InitiatePaymentInput
 ): Promise<InitiatePaymentResponse> {
@@ -45,41 +49,19 @@ export async function initiatePayment(
       return { success: false, error: 'Invalid order amount.' };
   }
 
-  // Determine environment - Since production keys were provided, hardcode to PRODUCTION
-  // const cashfreeEnv = secretKey.includes('_test_') ? 'SANDBOX' : 'PRODUCTION'; // Previous dynamic check
-  const cashfreeEnv = 'PRODUCTION'; // Explicitly set based on provided keys
-  console.log(`Cashfree Info: Initializing Cashfree SDK in ${cashfreeEnv} mode.`);
+  // Determine environment - Use PRODUCTION since production keys were provided
+  const cashfreeEnv = Cashfree.Environment.PRODUCTION; // Use Enum for safety
+  console.log(`Cashfree Info: Configuring Cashfree SDK in ${cashfreeEnv === Cashfree.Environment.PRODUCTION ? 'PRODUCTION' : 'SANDBOX'} mode.`);
 
-  let cashfree: Cashfree;
+  // Configure Cashfree SDK globally for static methods (v4 style)
   try {
-      console.log('Cashfree Info: Attempting to initialize Cashfree SDK...');
-      cashfree = new Cashfree({
-        api_key: appId,
-        api_secret: secretKey,
-        env: cashfreeEnv,
-      });
-
-      // Add more robust checks after initialization attempt
-      if (!cashfree) {
-           console.error('Cashfree Error: Cashfree SDK object is null or undefined after initialization.');
-           throw new Error('Payment SDK initialization returned undefined.');
-      }
-      if (typeof cashfree.orders === 'undefined') {
-          console.error('Cashfree Error: Cashfree SDK initialized, but `orders` property is missing.', cashfree);
-          throw new Error('Payment SDK failed to initialize properly (missing orders property).');
-      }
-       if (typeof cashfree.orders.create !== 'function') {
-          console.error('Cashfree Error: Cashfree SDK initialized, but `orders.create` is not a function.', cashfree.orders);
-          throw new Error('Payment SDK failed to initialize properly (missing orders.create function).');
-      }
-
-      console.log('Cashfree Info: Cashfree SDK initialized successfully.');
-
-  } catch (initError: any) {
-        console.error('Cashfree Error: Error during Cashfree SDK initialization:', initError);
-        // Provide a more specific error message if possible
-        const errorMessage = initError.message || 'Unknown initialization error.';
-        return { success: false, error: `Payment SDK initialization error: ${errorMessage}` };
+    Cashfree.XClientId = appId;
+    Cashfree.XClientSecret = secretKey;
+    Cashfree.XEnvironment = cashfreeEnv;
+    console.log('Cashfree Info: SDK configured globally.');
+  } catch (configError: any) {
+    console.error('Cashfree Error: Error during Cashfree SDK configuration:', configError);
+    return { success: false, error: `Payment SDK configuration error: ${configError.message || 'Unknown configuration error.'}` };
   }
 
 
@@ -108,8 +90,8 @@ export async function initiatePayment(
 
     console.log('Cashfree Info: Creating order with request:', request);
 
-    // Use the instantiated cashfree object to call orders.create
-    const response = await cashfree.orders.create(request);
+    // Use the static PGCreateOrder method with the API version (v4 style)
+    const response = await Cashfree.PGCreateOrder(CASHFREE_API_VERSION, request);
 
     console.log('Cashfree Info: Order creation response received.');
     // Avoid logging sensitive parts of the response in production if possible
