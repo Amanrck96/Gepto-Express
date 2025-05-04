@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { ShoppingCart, MapPin, Search, Plus, Minus } from 'lucide-react';
+import { ShoppingCart, MapPin, Search, Plus, Minus, Loader2 } from 'lucide-react'; // Added Loader2
 import Image from 'next/image';
 import type { Location } from '@/services/geocoding';
 import type { Store } from '@/services/store';
@@ -14,9 +14,12 @@ import { getAddress, getLocation } from '@/services/geocoding';
 import { getNearbyStores } from '@/services/store';
 import { getProductCategories, getProductsByStoreAndCategory } from '@/services/product';
 import { useToast } from '@/hooks/use-toast';
+import { initiatePayment } from '@/actions/payment'; // Import the server action
+import { load } from 'cashfree-pg-sdk-javascript'; // Import Cashfree SDK loader
 
-// Mock Cart Item Type
-interface CartItem extends Product {
+
+// Mock Cart Item Type - Export it so it can be used in actions/payment.ts
+export interface CartItem extends Product {
   quantity: number;
 }
 
@@ -34,8 +37,34 @@ export default function Home() {
   const [loadingStores, setLoadingStores] = useState(false);
   const [loadingCategories, setLoadingCategories] = useState(false);
   const [loadingProducts, setLoadingProducts] = useState(false);
+  const [isCheckingOut, setIsCheckingOut] = useState(false); // State for checkout loading
+  const [cashfreeInstance, setCashfreeInstance] = useState<any>(null); // State for Cashfree SDK instance
 
   const { toast } = useToast();
+
+  // Initialize Cashfree SDK on component mount
+   useEffect(() => {
+    async function initializeCashfree() {
+      try {
+        // Determine environment based on hostname or an env variable if preferred
+        const isProduction = window.location.hostname !== 'localhost'; // Example check
+        const cashfree = await load({
+            mode: isProduction ? "production" : "sandbox" // Use "sandbox" for testing, "production" for live
+        });
+        setCashfreeInstance(cashfree);
+        console.log('Cashfree SDK Initialized');
+      } catch (error) {
+        console.error("Failed to initialize Cashfree SDK:", error);
+        toast({
+          title: "Payment Error",
+          description: "Could not initialize the payment gateway. Please try again later.",
+          variant: "destructive",
+        });
+      }
+    }
+    initializeCashfree();
+   }, [toast]); // Dependency array includes toast to potentially show errors
+
 
   // 1. Auto-detect location
   useEffect(() => {
@@ -187,12 +216,78 @@ export default function Home() {
   };
 
    const getCartTotal = () => {
-    return cart.reduce((total, item) => total + item.price * item.quantity, 0).toFixed(2);
-  };
+    // Ensure total is never negative and has 2 decimal places
+    const total = cart.reduce((total, item) => total + item.price * item.quantity, 0);
+    return Math.max(0, total).toFixed(2);
+   };
 
   const getCartItemCount = () => {
     return cart.reduce((total, item) => total + item.quantity, 0);
   };
+
+  // Checkout Function
+  const handleCheckout = async () => {
+     if (!cashfreeInstance) {
+       toast({
+         title: "Payment Error",
+         description: "Payment gateway is not ready. Please wait a moment and try again.",
+         variant: "destructive",
+       });
+       return;
+     }
+     if (cart.length === 0) {
+       toast({ title: "Empty Cart", description: "Please add items to your cart before checking out.", variant: "destructive" });
+       return;
+     }
+     setIsCheckingOut(true);
+
+     // --- Placeholder Customer Details ---
+     // In a real app, you'd get this from user authentication/profile
+     const customerDetails = {
+       customerId: `USER_${Math.random().toString(36).substring(2, 10)}`, // Replace with actual user ID
+       customerEmail: 'test@example.com', // Replace with actual user email
+       customerPhone: '9876543210', // Replace with actual user phone
+       customerName: 'Test User' // Optional: Replace with actual user name
+     };
+     // --- End Placeholder ---
+
+     try {
+       const total = parseFloat(getCartTotal());
+       if (isNaN(total) || total <= 0) {
+          throw new Error("Invalid cart total.");
+       }
+
+       const response = await initiatePayment({
+         items: cart,
+         totalAmount: total,
+         customerDetails: customerDetails,
+       });
+
+       if (response.success && response.payment_session_id) {
+         console.log('Payment session created:', response.payment_session_id);
+         // Use the Cashfree Drop-in SDK
+         cashfreeInstance.checkout({
+            paymentSessionId: response.payment_session_id,
+            orderId: response.order_id,
+            // Optional: Customize appearance or behavior
+            // display: { backdrop: true, hideIcon: false },
+            // style: { color: '#ffffff', backgroundColor: '#006400' } // Example styling
+         });
+         // The SDK handles the rest (showing payment options, redirection, etc.)
+       } else {
+         throw new Error(response.error || 'Failed to initiate payment.');
+       }
+     } catch (error: any) {
+       console.error('Checkout error:', error);
+       toast({
+         title: 'Checkout Failed',
+         description: error.message || 'Could not start the payment process. Please try again.',
+         variant: 'destructive',
+       });
+     } finally {
+       setIsCheckingOut(false);
+     }
+   };
 
 
   // Filter products based on search term
@@ -290,8 +385,8 @@ export default function Home() {
                           <Image
                             src={product.imageUrl || `https://picsum.photos/300/300?random=${product.id}`}
                             alt={product.name}
-                            layout="fill"
-                            objectFit="cover"
+                           fill={true} // Use fill with relative parent
+                           style={{ objectFit: "cover" }} // Use style for objectFit with fill
                             data-ai-hint="product grocery item"
                            />
                        </CardHeader>
@@ -326,28 +421,42 @@ export default function Home() {
             </section>
           )}
 
-          {/* Cart Summary (Floating or fixed) - Placeholder */}
+          {/* Cart Summary (Floating or fixed) */}
            {cart.length > 0 && (
-            <Card className="fixed bottom-4 right-4 w-72 shadow-xl z-50">
+            <Card className="fixed bottom-4 right-4 w-72 shadow-xl z-50 bg-card"> {/* Ensure background for visibility */}
               <CardHeader>
                 <CardTitle className="flex items-center justify-between text-lg">
                   Your Cart
-                  <Badge variant="primary">{getCartItemCount()}</Badge>
+                  <Badge >{getCartItemCount()}</Badge> {/* Use default variant */}
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                 <div className="text-lg font-semibold">Total: ₹{getCartTotal()}</div>
-                 {/* Basic List for Demo */}
-                  <ul className="text-xs mt-2 max-h-20 overflow-y-auto">
+                 <div className="text-lg font-semibold mb-2">Total: ₹{getCartTotal()}</div>
+                  <ul className="text-xs mt-2 max-h-24 overflow-y-auto space-y-1 text-muted-foreground">
                     {cart.map(item=>(
-                        <li key={item.id}>{item.name} x {item.quantity}</li>
+                        <li key={item.id} className="flex justify-between">
+                            <span>{item.name} x {item.quantity}</span>
+                             <span>₹{(item.price * item.quantity).toFixed(2)}</span>
+                        </li>
                     ))}
                   </ul>
               </CardContent>
               <CardFooter>
-                <Button className="w-full transition-transform active:scale-95">
-                  Proceed to Checkout
-                </Button>
+                <Button
+                    onClick={handleCheckout}
+                    className="w-full transition-transform active:scale-95"
+                    disabled={isCheckingOut || !cashfreeInstance} // Disable button during checkout or if SDK not ready
+                    aria-live="polite" // Announce loading state change
+                >
+                   {isCheckingOut ? (
+                    <>
+                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                     Processing...
+                    </>
+                   ) : (
+                    'Proceed to Checkout'
+                   )}
+                 </Button>
               </CardFooter>
             </Card>
           )}

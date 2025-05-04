@@ -3,12 +3,8 @@
 # dependencies
 /node_modules
 /.pnp
-.pnp.*
-.yarn/*
-!.yarn/patches
-!.yarn/plugins
-!.yarn/releases
-!.yarn/versions
+.pnp.js
+.yarn/install-state.gz
 
 # testing
 /coverage
@@ -30,12 +26,32 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
+# local env files
+.env*.local
+
 # vercel
 .vercel
 
+# turbo
+.turbo
+
 # typescript
 *.tsbuildinfo
-next-env.d.ts
+tsconfig.tsbuildinfo
 
-.genkit/*
-.env*
+# eslint
+.eslintcache
+
+# Patch-package
+patches/
+# Firebase emulators
+firebase-debug.log
+*.snapshot
+firestore.indexes.json
+database-debug.log
+pubsub-debug.log
+storage-debug.log
+ui-debug.log
+
+# Crashlytics Android NDK
+.cxx/
