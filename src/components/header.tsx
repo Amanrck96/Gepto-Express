@@ -1,8 +1,16 @@
+
+'use client'; // Needed for useState
+
+import { useState } from 'react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
-import { ShoppingCart, User, Package } from 'lucide-react'; // Added Package for Orders
+import { ShoppingCart, User, Package, Coins } from 'lucide-react'; // Added Package for Orders and Coins for Wallet
 
 export function Header() {
+  // Simple client-side state for the wallet balance for now
+  // In a real app, this would come from user data/API
+  const [geptoCoins, setGeptoCoins] = useState(100);
+
   return (
     <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
       <div className="container flex h-14 items-center">
@@ -16,7 +24,13 @@ export function Header() {
           <span className="font-bold text-lg text-primary">Gepto Express</span>
         </Link>
         <nav className="flex flex-1 items-center justify-end space-x-2">
-           {/* Add navigation items here if needed */}
+           {/* Gepto Coin Wallet Display */}
+           <div className="flex items-center space-x-1 mr-2 text-sm font-medium text-muted-foreground">
+             <Coins className="h-5 w-5 text-yellow-500" />
+             <span>{geptoCoins}</span>
+           </div>
+
+           {/* Other navigation items */}
            <Button variant="ghost" size="icon" aria-label="Orders">
              <Package className="h-5 w-5" />
            </Button>
