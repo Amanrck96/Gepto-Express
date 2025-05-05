@@ -92,7 +92,8 @@ export default function Home() {
 
   // Function to handle SDK script loading errors
   const handleCashfreeScriptError = (e: any) => {
-    console.error("Cashfree Drop-in SDK (v3) script failed to load:", e);
+    // Log the URL that failed to load for better debugging
+    console.error(`Cashfree Drop-in SDK (v3) script failed to load from URL: ${cashfreeScriptSrc}. Error:`, e);
     toast({
         title: "Payment Error",
         description: "Failed to load payment script. Please refresh.",
@@ -728,3 +729,4 @@ declare global {
     };
   }
 }
+
