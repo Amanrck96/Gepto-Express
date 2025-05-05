@@ -18,7 +18,7 @@ import { getNearbyStores } from '@/services/store';
 import { getProductCategories, getProductsByStoreAndCategory } from '@/services/product';
 import { useToast } from '@/hooks/use-toast';
 import { initiatePayment } from '@/actions/payment'; // Import the server action
-import { load } from '@cashfreepayments/cashfree-js'; // Import Cashfree SDK loader v3
+// Removed incorrect import: import { load } from '@cashfreepayments/cashfree-js';
 import Script from 'next/script'; // Import Next.js Script component
 
 
@@ -42,9 +42,10 @@ export default function Home() {
   const [loadingCategories, setLoadingCategories] = useState(false);
   const [loadingProducts, setLoadingProducts] = useState(false);
   const [isCheckingOut, setIsCheckingOut] = useState(false); // State for checkout loading
-  const [cashfreeInstance, setCashfreeInstance] = useState<any>(null); // State for Cashfree SDK instance v3
+  // const [cashfreeInstance, setCashfreeInstance] = useState<any>(null); // State no longer needed, use window.Cashfree directly
   const [geptoCoinBalance, setGeptoCoinBalance] = useState(100); // Mock balance
   const [useGeptoCoins, setUseGeptoCoins] = useState(false); // State for checkbox
+  const [isCashfreeReady, setIsCashfreeReady] = useState(false); // Track if SDK is loaded
 
 
   const { toast } = useToast();
@@ -54,36 +55,16 @@ export default function Home() {
   const isTestMode = appId?.startsWith('TEST');
   const cashfreeMode = isTestMode ? 'sandbox' : 'production'; // Use 'sandbox' for TEST keys
 
+  // Use Cashfree v1 SDK URLs based on user examples and troubleshooting
   const cashfreeScriptSrc = isTestMode
-    ? 'https://sdk.cashfree.com/js/v3/cashfree.sandbox.js' // v3 Sandbox script
-    : 'https://sdk.cashfree.com/js/v3/cashfree.prod.js'; // v3 Production script
+    ? 'https://sdk.cashfree.com/js/v1/cashfree.sandbox.js' // v1 Sandbox script
+    : 'https://sdk.cashfree.com/js/v1/cashfree.production.js'; // v1 Production script
 
-  // Initialize Cashfree Drop-in SDK instance after script loads
-  const initializeCashfreeDropin = async () => {
-     // Use window.Cashfree for v3 SDK
-     if (typeof window !== 'undefined' && window.Cashfree && !cashfreeInstance) {
-         try {
-             console.log(`Cashfree Drop-in (v3): Initializing SDK in ${cashfreeMode} mode...`);
-             // Initialize using the global Cashfree object (v3 style)
-             // The `load` function might be specific to v2 or a different package.
-             // For v3 drop-in, you typically just use the window.Cashfree object directly
-             // after the script loads. Let's store the loaded object.
-             setCashfreeInstance(window.Cashfree); // Store the SDK object
-             console.log('Cashfree Drop-in SDK (v3) Object ready.');
-         } catch (error) {
-             console.error("Failed to prepare Cashfree Drop-in SDK (v3):", error);
-             toast({
-                 title: "Payment Error",
-                 description: "Could not initialize the payment interface. Please refresh.",
-                 variant: "destructive",
-             });
-         }
-     } else if (cashfreeInstance) {
-        console.log("Cashfree Drop-in (v3): SDK already ready.");
-     } else if (typeof window !== 'undefined' && !window.Cashfree) {
-         console.warn("Cashfree Drop-in (v3): Script loaded, but window.Cashfree not found yet. Retrying init might be needed.");
-         // Optionally, you could add a small delay and retry here if needed
-     }
+  // Function called when the SDK script loads successfully
+  const handleCashfreeScriptLoad = () => {
+    console.log('Cashfree SDK (v1) script loaded successfully.');
+    setIsCashfreeReady(true); // Mark SDK as ready
+    // No need to explicitly initialize or store instance for v1 drop-in typically
   };
 
 
@@ -194,14 +175,21 @@ export default function Home() {
   useEffect(() => {
     if (selectedCategory && stores.length > 0) {
       setLoadingProducts(true);
-      getProductsByStoreAndCategory(stores[0].id, selectedCategory.id) // Use first store's ID
-        .then(setProducts)
-        .catch(err => {
-          console.error("Error fetching products:", err);
-          toast({ title: "Product Fetch Error", description: `Could not load ${selectedCategory.name}.`, variant: "destructive" });
-          setProducts([]);
-        })
-        .finally(() => setLoadingProducts(false));
+      // Ensure stores[0].id is valid before fetching
+       if (stores[0]?.id) {
+           getProductsByStoreAndCategory(stores[0].id, selectedCategory.id) // Use first store's ID
+           .then(setProducts)
+           .catch(err => {
+             console.error("Error fetching products:", err);
+             toast({ title: "Product Fetch Error", description: `Could not load ${selectedCategory.name}.`, variant: "destructive" });
+             setProducts([]);
+           })
+           .finally(() => setLoadingProducts(false));
+       } else {
+           console.warn("No valid store ID found to fetch products.");
+           setLoadingProducts(false);
+           setProducts([]);
+       }
     } else {
       setProducts([]);
     }
@@ -254,22 +242,16 @@ export default function Home() {
     return cart.reduce((total, item) => total + item.quantity, 0);
   };
 
-  // Checkout Function
+  // Checkout Function - Updated for v1 SDK Drop-in
   const handleCheckout = async () => {
-     // Use the stored v3 SDK instance
-     if (!cashfreeInstance) {
-       console.error("Cashfree Drop-in (v3): SDK instance not ready yet.");
-       // Try initializing again, maybe it wasn't ready on first load
-       await initializeCashfreeDropin();
-       // Re-check after attempting re-initialization
-       if (!cashfreeInstance) {
-            toast({
-             title: "Payment Error",
-             description: "Payment interface not ready. Please wait or refresh.",
-             variant: "destructive",
-           });
-           return;
-       }
+     if (!isCashfreeReady || typeof window.Cashfree === 'undefined') {
+       console.error("Cashfree SDK (v1) not ready yet.");
+       toast({
+         title: "Payment Error",
+         description: "Payment interface not ready. Please wait or refresh.",
+         variant: "destructive",
+       });
+       return;
      }
 
      if (cart.length === 0) {
@@ -304,40 +286,19 @@ export default function Home() {
 
        if (response.success && response.payment_session_id && response.order_id) {
          console.log('Payment session created:', response.payment_session_id);
-         // Use the Cashfree Drop-in SDK (v3 style)
-         cashfreeInstance.drop({
-            paymentSessionId: response.payment_session_id,
-            orderId: response.order_id,
-            // Components determine the payment flow ('order-details', 'card', 'upi', 'app', 'netbanking', 'paylater', 'credicardemi', 'cardlessemi')
-            components: [
-                "order-details",
-                "card",
-                "upi",
-                "app", // For wallets like Paytm etc.
-                "netbanking",
-            ],
-            // Optional: on Success/Error callbacks
-             onSuccess: function(data: any) {
-                console.log("Payment Success Data:", data);
-                // You might want to redirect or show a success message here based on 'data.order.status'
-                 if (data && data.order && data.order.status === "PAID") {
-                     // Redirect to your order status page
-                    window.location.href = `/order/status?order_id=${data.order.orderId}`;
-                 } else {
-                     // Handle cases where it might be pending or other statuses
-                     toast({ title: "Payment Processing", description: "Payment status: " + (data?.order?.status || 'Pending') });
-                 }
-            },
-            onFailure: function(data: any) {
-                console.error("Payment Failure Data:", data);
-                toast({
-                    title: "Payment Failed",
-                    description: data?.order?.errorText || "Transaction failed. Please try again.",
-                    variant: "destructive",
-                });
-                // Maybe redirect to cart or show try again option
-             },
+
+         // Use the v1 Cashfree SDK drop-in checkout method
+         const cf = window.Cashfree; // Access the global Cashfree object
+         cf.checkout({
+           paymentSessionId: response.payment_session_id,
+           orderId: response.order_id,
+           // Add any other v1 drop-in specific parameters if needed
+           // Example: display options
+           // display: { view: 'popup' }, // or 'inline'
          });
+         // The v1 SDK typically handles success/failure redirection or callbacks internally
+         // based on the order meta return_url or webhook setup.
+
 
        } else if (response.success && response.order_id && !response.payment_session_id) {
           console.log("Order fully paid with Gepto Coins.");
@@ -347,9 +308,14 @@ export default function Home() {
           });
           setCart([]);
           setUseGeptoCoins(false);
-          // Consider redirecting: window.location.href = `/order/status?order_id=${response.order_id}`;
+          // Consider redirecting to status page after a short delay
+          setTimeout(() => {
+             window.location.href = `/order/status?order_id=${response.order_id}`;
+          }, 1500);
+
        } else {
-         throw new Error(response.error || 'Failed to initiate payment. Check server logs.');
+         // Throw error received from the server action
+         throw new Error(response.error || 'Failed to initiate payment. Check server logs for details.');
        }
      } catch (error: any) {
        console.error('Checkout error:', error);
@@ -372,19 +338,20 @@ export default function Home() {
 
   return (
     <>
-      {/* Load Cashfree v3 SDK Script */}
+      {/* Load Cashfree v1 SDK Script */}
       <Script
-        id="cf-dropin-js" // Changed ID for clarity
-        src={cashfreeScriptSrc} // Use the dynamically determined src
-        strategy="lazyOnload"
-        onLoad={initializeCashfreeDropin} // Initialize after script loads
+        id="cf-checkout-js" // Keep ID consistent
+        src={cashfreeScriptSrc} // Use the dynamically determined v1 src
+        strategy="lazyOnload" // Load after essential page elements
+        onLoad={handleCashfreeScriptLoad} // Call function on successful load
         onError={(e) => {
-            console.error("Cashfree Drop-in SDK (v3) script failed to load:", e);
+            console.error("Cashfree SDK (v1) script failed to load:", e);
             toast({
                 title: "Payment Error",
                 description: "Failed to load payment script.",
                 variant: "destructive",
             });
+            setIsCashfreeReady(false); // Ensure readiness state is false on error
         }}
       />
 
@@ -575,7 +542,7 @@ export default function Home() {
                       onClick={handleCheckout}
                       className="w-full transition-transform active:scale-95"
                        // Disable button during checkout, if SDK not ready, if amount invalid, or if location invalid
-                      disabled={isCheckingOut || !cashfreeInstance || getFinalAmount() < 0 || !location || !address.toLowerCase().includes('cooch behar') }
+                      disabled={isCheckingOut || !isCashfreeReady || getFinalAmount() < 0 || !location || !address.toLowerCase().includes('cooch behar') }
                       aria-live="polite"
                   >
                      {isCheckingOut ? (
@@ -597,9 +564,15 @@ export default function Home() {
   );
 }
 
-// Helper type for Cashfree window object (v3)
+// Helper type for Cashfree window object (v1 specific methods might differ)
 declare global {
   interface Window {
-    Cashfree?: any; // Use 'any' for simplicity, or define a more specific interface if needed
+    // Define the Cashfree object structure based on v1 SDK documentation
+    Cashfree?: {
+      checkout(options: { paymentSessionId: string; orderId: string; /* Add other v1 options */ }): void;
+      // Potentially add other v1 methods like init if needed, though often not required for simple drop-in
+      // init?(options: { appId: string; orderToken: string; mode: 'sandbox' | 'production'; /* ... */ }): Promise<{ status: string; }>;
+    };
   }
 }
+

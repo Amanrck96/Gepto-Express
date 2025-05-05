@@ -48,8 +48,7 @@ function initializeCashfreeSDK() {
   console.log(`Cashfree Info: Using App ID (from env): ${appId}`); // Log the actual App ID being used
   // Do not log the secret key
 
-  // Determine environment based on NODE_ENV or keys (force SANDBOX for TEST keys)
-  // ** Explicitly use SANDBOX if using TEST keys, regardless of NODE_ENV **
+  // Determine environment based on App ID prefix (TEST or production)
   const isTestKey = appId.startsWith('TEST');
   const cashfreeEnv = isTestKey ? Cashfree.Environment.SANDBOX : Cashfree.Environment.PRODUCTION;
 
@@ -62,10 +61,11 @@ function initializeCashfreeSDK() {
     console.log(`Cashfree Info: SDK instance initialized in ${cashfreeEnv} mode.`);
 
     // **Immediate Check**: Add a quick check after initialization
-    if (!cashfree || typeof cashfree.orders?.create !== 'function') {
-        console.error("Cashfree FATAL Error: SDK instance invalid IMMEDIATELY after initialization (missing 'orders.create'). Instance:", cashfree);
+    // Ensure 'orders' property and 'create' method exist
+    if (!cashfree || typeof cashfree.orders !== 'object' || typeof cashfree.orders.create !== 'function') {
+        console.error("Cashfree FATAL Error: SDK instance invalid IMMEDIATELY after initialization (missing 'orders' property or 'orders.create' method). Instance:", cashfree);
         // Throw an error that will be caught below and propagated
-        throw new Error('Payment SDK failed internal consistency check after initialization.');
+        throw new Error('Payment SDK failed internal consistency check after initialization (missing orders property or create method).');
     } else {
         console.log("Cashfree Info: SDK instance passed initial validation (has orders.create).");
     }
@@ -97,10 +97,11 @@ export async function initiatePayment(
       console.log("Order fully paid with Gepto Coins. Skipping payment gateway.");
       const orderId = `GEPTO-COINS-${uuidv4()}`;
       console.log(`TODO: Deduct ${coinsUsed} Gepto Coins from user ${customerDetails.customerId}'s balance.`);
+      // Add actual coin deduction logic here if/when implemented
       return {
         success: true,
         order_id: orderId,
-        message: `Order placed successfully using ${coinsUsed} Gepto Coins.`,
+        message: `Order placed successfully using ${coinsUsed.toFixed(0)} Gepto Coins.`,
       };
     }
     effectiveTotalAmount = Math.max(0, effectiveTotalAmount);
@@ -115,9 +116,9 @@ export async function initiatePayment(
      return { success: false, error: `Payment SDK initialization error: ${configError.message || "Check server logs."}` };
   }
 
-  // **Redundant Check (Defense in depth)**
+  // **Redundant Check (Defense in depth)** - Ensure orders.create is still present
   if (!cashfree || typeof cashfree !== 'object' || typeof cashfree.orders !== 'object' || typeof cashfree.orders.create !== 'function') {
-      console.error("Cashfree FATAL Error: SDK instance appears invalid before creating order (missing 'orders.create'). Instance:", cashfree ? Object.keys(cashfree) : 'null', cashfree?.orders ? Object.keys(cashfree.orders) : 'no orders prop');
+      console.error("Cashfree FATAL Error: SDK instance appears invalid before creating order (missing 'orders' property or 'orders.create'). Instance:", cashfree ? Object.keys(cashfree) : 'null', cashfree?.orders ? Object.keys(cashfree.orders) : 'no orders prop');
       return { success: false, error: 'Payment SDK initialization error: SDK failed to initialize properly (missing crucial methods). Check server logs.' };
   } else {
       console.log("Cashfree Info: SDK instance validated again before calling orders.create.");
@@ -143,21 +144,19 @@ export async function initiatePayment(
 
 
   // --- HTTPS Handling for return URL ---
-  // Cashfree generally requires HTTPS for non-localhost URLs in production.
-  // For sandbox/test keys, HTTP localhost might work, but HTTPS is safer.
   const isLocalhost = appUrl.includes('localhost') || appUrl.includes('127.0.0.1');
-  const isProductionEnv = process.env.NODE_ENV === 'production';
+  const isProductionKey = !process.env.CF_APP_ID?.startsWith('TEST'); // Check if using production keys
   let finalReturnUrl: string;
 
-  if (isProductionEnv && !isLocalhost && !appUrl.startsWith('https://')) {
-      console.warn(`Cashfree Warning: Production environment detected but NEXT_PUBLIC_APP_URL (${appUrl}) is not HTTPS. Attempting to force HTTPS for return_url.`);
+  if (isProductionKey && !isLocalhost && !appUrl.startsWith('https://')) {
+      console.warn(`Cashfree Warning: Production keys detected but NEXT_PUBLIC_APP_URL (${appUrl}) is not HTTPS. Attempting to force HTTPS for return_url.`);
       finalReturnUrl = appUrl.replace('http://', 'https://');
        if (!finalReturnUrl.startsWith('https://')) { // If it didn't start with http://
           finalReturnUrl = `https://${appUrl}`;
        }
       console.log(`Cashfree Info: Forced HTTPS return URL: ${finalReturnUrl}`);
   } else {
-      finalReturnUrl = appUrl; // Use as is for localhost or if already HTTPS
+      finalReturnUrl = appUrl; // Use as is for localhost, test keys, or if already HTTPS
   }
 
   // Append the order status path and query parameter
@@ -165,10 +164,10 @@ export async function initiatePayment(
   const fullReturnUrl = `${finalReturnUrl}${returnUrlPath}`;
 
 
-  // Final check on the return URL format
-  if (!isLocalhost && !fullReturnUrl.startsWith('https://') && isProductionEnv) {
-      console.error(`Cashfree FATAL Error: Cannot proceed. Final return URL (${fullReturnUrl}) MUST BE HTTPS for non-localhost addresses in production environment.`);
-      return { success: false, error: 'Invalid return URL configuration: Production environment requires HTTPS for non-localhost return URLs.' };
+  // Final check on the return URL format for production keys
+  if (isProductionKey && !isLocalhost && !fullReturnUrl.startsWith('https://')) {
+      console.error(`Cashfree FATAL Error: Cannot proceed. Final return URL (${fullReturnUrl}) MUST BE HTTPS for non-localhost addresses when using production keys.`);
+      return { success: false, error: 'Invalid return URL configuration: Production keys require HTTPS for non-localhost return URLs.' };
   } else {
       console.log(`Cashfree Info: Using final return URL: ${fullReturnUrl}`);
   }
@@ -191,13 +190,13 @@ export async function initiatePayment(
       return_url: fullReturnUrl, // Use the validated full URL
       // notify_url: `${appUrl}/api/webhooks/cashfree`, // Optional webhook URL
     },
-    order_note: `Order from Gepto Express. ${coinsUsed > 0 ? `Paid ${coinsUsed.toFixed(2)} with Gepto Coins.` : ''}`.trim(),
+    order_note: `Order from Gepto Express. ${coinsUsed > 0 ? `Paid ${coinsUsed.toFixed(0)} with Gepto Coins.` : ''}`.trim(),
     order_expiry_time: new Date(Date.now() + 15 * 60 * 1000).toISOString(), // 15 min expiry
   };
 
 
   if (!request || typeof request !== 'object' || !request.order_id || !request.customer_details || !request.order_meta || !request.order_meta.return_url || typeof request.order_amount !== 'number' || isNaN(request.order_amount) || request.order_amount <= 0) {
-      console.error('Cashfree FATAL Error: The constructed `request` object is invalid or missing required fields before calling orders.create.', request);
+      console.error('Cashfree FATAL Error: The constructed `request` object is invalid or missing required fields before calling orders.create.', JSON.stringify(request, null, 2));
       return { success: false, error: `Internal server error: Failed to construct valid payment request data. Check server logs. Amount: ${request?.order_amount}, Type: ${typeof request?.order_amount}` };
   }
 
@@ -217,13 +216,13 @@ export async function initiatePayment(
       console.log(`Cashfree Info: Successfully created payment session: ${response.payment_session_id} for order: ${orderId}`);
       if (coinsUsed > 0) {
          console.log(`TODO: Deduct ${coinsUsed} Gepto Coins from user ${customerDetails.customerId}'s balance.`);
-         // await deductGeptoCoins(customerDetails.customerId, coinsUsed);
+         // await deductGeptoCoins(customerDetails.customerId, coinsUsed); // Add actual deduction logic
        }
       return {
         success: true,
         payment_session_id: response.payment_session_id,
         order_id: orderId,
-        message: coinsUsed > 0 ? `Applied ${coinsUsed.toFixed(2)} Gepto Coins.` : undefined,
+        message: coinsUsed > 0 ? `Applied ${coinsUsed.toFixed(0)} Gepto Coins.` : undefined,
       };
     } else {
       const errorMessage = (response as any)?.message || 'Failed to create payment session (no session ID received).';
@@ -250,11 +249,11 @@ export async function initiatePayment(
                  if (responseData.code) {
                     errorMessage += ` (Code: ${responseData.code})`;
                      if (['authentication_failed', 'request_failed', 'authorization_failed'].includes(responseData.code) || responseData.type === 'authentication_error') {
-                         console.error("Cashfree Authentication Error: Verify API keys (App ID/Secret Key) and environment (Sandbox/Production). Ensure NODE_ENV matches keys and keys match environment.");
+                         console.error("Cashfree Authentication Error: Verify API keys (App ID/Secret Key) and environment (Sandbox/Production). Ensure CF_APP_ID matches keys and environment.");
                          errorMessage = `Authentication failed with Cashfree. Check credentials/environment. (Code: ${responseData.code})`;
                      } else if (responseData.type === 'invalid_request_error' && (responseData.message?.includes('return_url') || responseData.code === 'order_meta.return_url_invalid')) {
-                          console.error("Cashfree Invalid Request Error: Check return_url format (must be HTTPS for production/non-local). Current URL:", fullReturnUrl);
-                          errorMessage = `Invalid return URL format: ${responseData.message}. Ensure it is HTTPS for production. (Code: ${responseData.code})`;
+                          console.error("Cashfree Invalid Request Error: Check return_url format (must be HTTPS for production keys/non-local). Current URL:", fullReturnUrl);
+                          errorMessage = `Invalid return URL format: ${responseData.message}. Ensure it is HTTPS for production keys. (Code: ${responseData.code})`;
                      } else if (responseData.code === 'idempotency_error') {
                           console.warn(`Cashfree Warning: Idempotency error for order ${orderId}. Order might already exist.`);
                           errorMessage = `Order with ID ${orderId} might already exist. Please check status or try again later. (Code: ${responseData.code})`;
@@ -271,14 +270,17 @@ export async function initiatePayment(
         console.error('Cashfree Error: Non-API Error details:', error.name, error.message, error.stack);
 
         if (errorMessage.includes('cashfree.orders.create is not a function')) {
-             console.error('Cashfree Diagnosis: SDK object malformed or init failed. Check `initializeCashfreeSDK`.');
-             errorMessage = 'Payment SDK configuration error: orders.create method missing (check SDK init/version).'
+             console.error('Cashfree Diagnosis: SDK object malformed or init failed. Check `initializeCashfreeSDK`. Ensure `cashfree-pg` version >= 5.');
+             errorMessage = 'Payment SDK configuration error: orders.create method missing (check SDK init/version >= 5).'
          } else if (errorMessage.includes('Required parameter CreateOrderRequest was null or undefined')) {
              console.error('Cashfree Diagnosis: SDK threw "CreateOrderRequest was null or undefined". Issue with `request` object or SDK state. Request:', JSON.stringify(request, null, 2));
              errorMessage = 'Internal server error: Invalid payment request data constructed.';
          } else if (errorMessage.includes('Payment SDK initialization error') || errorMessage.includes('Payment gateway configuration error')) {
               console.error('Cashfree Diagnosis: SDK init/config failed. Check env vars (CF_APP_ID, CF_SECRET_KEY) and `initializeCashfreeSDK`.');
               errorMessage = 'Payment SDK configuration failed. Check server configuration.';
+         } else if (errorMessage.includes('internal consistency check')) {
+             console.error('Cashfree Diagnosis: SDK internal consistency check failed during init. Check env vars and SDK instantiation in `initializeCashfreeSDK`.');
+             errorMessage = 'Payment SDK configuration error: Internal consistency check failed during initialization.';
          }
      } else {
          console.error('Cashfree Error: Unknown error structure caught:', error);

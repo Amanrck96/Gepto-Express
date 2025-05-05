@@ -31,7 +31,7 @@ function initializeCashfreeSDKForStatus() {
    console.log(`Cashfree Order Status Info: Using App ID (from env): ${appId}`); // Log the actual App ID
   // Do not log the secret key
 
-  // Determine environment (force SANDBOX for TEST keys)
+  // Determine environment based on App ID prefix (TEST or production)
    const isTestKey = appId.startsWith('TEST');
    const cashfreeEnv = isTestKey ? Cashfree.Environment.SANDBOX : Cashfree.Environment.PRODUCTION;
    console.log(`Cashfree Order Status Info: Determined environment: ${cashfreeEnv} (App ID starts with ${isTestKey ? 'TEST' : 'Prod'})`);
@@ -44,8 +44,8 @@ function initializeCashfreeSDKForStatus() {
 
     // **Immediate Check**: Check for the specific method needed (orders.fetch)
     if (!cashfree || typeof cashfree.orders?.fetch !== 'function') {
-      console.error("Cashfree Order Status FATAL Error: SDK instance invalid IMMEDIATELY after initialization (missing 'orders.fetch'). Instance:", cashfree);
-      throw new Error('Payment SDK failed internal consistency check after initialization for status check.');
+      console.error("Cashfree Order Status FATAL Error: SDK instance invalid IMMEDIATELY after initialization (missing 'orders' property or 'orders.fetch'). Instance:", cashfree);
+      throw new Error('Payment SDK failed internal consistency check after initialization for status check (missing orders property or fetch method).');
     } else {
         console.log("Cashfree Order Status Info: SDK instance passed initial validation (has orders.fetch).");
     }
@@ -86,10 +86,10 @@ export async function getOrderStatus(orderId: string): Promise<OrderStatusRespon
      return { success: false, error: `Payment SDK initialization error for status check: ${sdkError.message || "Check server logs."}` };
    }
 
-   // **Redundant Check (Defense in depth)**
+   // **Redundant Check (Defense in depth)** - Ensure orders.fetch is still present
    if (!cashfree || typeof cashfree !== 'object' || typeof cashfree.orders !== 'object' || typeof cashfree.orders.fetch !== 'function') {
-        console.error("Cashfree Order Status FATAL Error: SDK instance appears invalid before fetch call (missing 'orders.fetch'). Instance:", cashfree ? Object.keys(cashfree) : 'null', cashfree?.orders ? Object.keys(cashfree.orders) : 'no orders prop');
-        return { success: false, error: 'Payment SDK configuration error for status check: SDK failed to initialize properly (missing orders property).' };
+        console.error("Cashfree Order Status FATAL Error: SDK instance appears invalid before fetch call (missing 'orders' property or 'orders.fetch'). Instance:", cashfree ? Object.keys(cashfree) : 'null', cashfree?.orders ? Object.keys(cashfree.orders) : 'no orders prop');
+        return { success: false, error: 'Payment SDK configuration error for status check: SDK failed to initialize properly (missing orders property or fetch method).' };
     } else {
         console.log("Cashfree Order Status Info: SDK instance validated again before calling orders.fetch.");
     }
@@ -118,7 +118,9 @@ export async function getOrderStatus(orderId: string): Promise<OrderStatusRespon
       return {
         success: true,
         order_status: response.order_status.toUpperCase() as OrderStatusResponse['order_status'],
-        transaction_status: response.transaction_status,
+        // Cashfree v5 SDK might not have transaction_status directly on fetch response
+        // Adjust based on actual API response if needed.
+        // transaction_status: response.transaction_status,
         payment_amount: response.order_amount,
         isCoinOrder: false,
       };
@@ -162,11 +164,14 @@ export async function getOrderStatus(orderId: string): Promise<OrderStatusRespon
         console.error('Cashfree Order Status Error: Non-API Error details:', error.name, error.message, error.stack);
 
          if (errorMessage.includes('cashfree.orders.fetch is not a function')) {
-              console.error('Cashfree Diagnosis: SDK object malformed or init failed. Check `initializeCashfreeSDKForStatus`.');
-             errorMessage = 'Payment SDK configuration error: orders.fetch method missing (check SDK init/version).'
+              console.error('Cashfree Diagnosis: SDK object malformed or init failed. Check `initializeCashfreeSDKForStatus`. Ensure `cashfree-pg` version >= 5.');
+             errorMessage = 'Payment SDK configuration error: orders.fetch method missing (check SDK init/version >= 5).'
          } else if (errorMessage.includes('Payment SDK initialization error') || errorMessage.includes('Payment gateway configuration error')) {
               console.error('Cashfree Order Status Diagnosis: SDK init/config failed. Check env vars or instance creation.');
               errorMessage = 'Payment SDK configuration failed for status check. Check server configuration.';
+         } else if (errorMessage.includes('internal consistency check')) {
+              console.error('Cashfree Diagnosis: SDK internal consistency check failed during init. Check env vars and SDK instantiation in `initializeCashfreeSDKForStatus`.');
+              errorMessage = 'Payment SDK configuration error for status check: Internal consistency check failed during initialization.';
          }
      } else {
          console.error('Cashfree Order Status Error: Unknown error structure caught:', error);
