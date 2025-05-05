@@ -18,7 +18,7 @@ import { getNearbyStores } from '@/services/store';
 import { getProductCategories, getProductsByStoreAndCategory } from '@/services/product';
 import { useToast } from '@/hooks/use-toast';
 import { initiatePayment } from '@/actions/payment'; // Import the server action
-import { load } from '@cashfreepayments/cashfree-js'; // Import Cashfree SDK loader
+import { load } from '@cashfreepayments/cashfree-js'; // Import Cashfree SDK loader v3
 import Script from 'next/script'; // Import Next.js Script component
 
 
@@ -42,43 +42,47 @@ export default function Home() {
   const [loadingCategories, setLoadingCategories] = useState(false);
   const [loadingProducts, setLoadingProducts] = useState(false);
   const [isCheckingOut, setIsCheckingOut] = useState(false); // State for checkout loading
-  const [cashfreeInstance, setCashfreeInstance] = useState<any>(null); // State for Cashfree SDK instance
+  const [cashfreeInstance, setCashfreeInstance] = useState<any>(null); // State for Cashfree SDK instance v3
   const [geptoCoinBalance, setGeptoCoinBalance] = useState(100); // Mock balance
   const [useGeptoCoins, setUseGeptoCoins] = useState(false); // State for checkbox
 
 
   const { toast } = useToast();
 
-  // Determine Cashfree mode (sandbox/production) - client-side check
-  // Use hostname or explicit env var if available
-  const isProduction = typeof window !== 'undefined' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1';
-  const cashfreeMode = isProduction ? 'production' : 'sandbox';
-  const cashfreeScriptSrc = isProduction
-    ? 'https://sdk.cashfree.com/js/v3/cashfree.prod.js' // v3 Production script
-    : 'https://sdk.cashfree.com/js/v3/cashfree.sandbox.js'; // v3 Sandbox script
+  // Determine Cashfree mode based on NEXT_PUBLIC_CASHFREE_APP_ID prefix
+  const appId = process.env.NEXT_PUBLIC_CASHFREE_APP_ID;
+  const isTestMode = appId?.startsWith('TEST');
+  const cashfreeMode = isTestMode ? 'sandbox' : 'production'; // Use 'sandbox' for TEST keys
+
+  const cashfreeScriptSrc = isTestMode
+    ? 'https://sdk.cashfree.com/js/v3/cashfree.sandbox.js' // v3 Sandbox script
+    : 'https://sdk.cashfree.com/js/v3/cashfree.prod.js'; // v3 Production script
 
   // Initialize Cashfree Drop-in SDK instance after script loads
   const initializeCashfreeDropin = async () => {
-     if (window.Cashfree && !cashfreeInstance) { // Ensure window.Cashfree exists and instance not already set
+     // Use window.Cashfree for v3 SDK
+     if (typeof window !== 'undefined' && window.Cashfree && !cashfreeInstance) {
          try {
-             console.log(`Cashfree Drop-in: Initializing SDK in ${cashfreeMode} mode...`);
-             const cashfree = await load({
-                 mode: cashfreeMode
-             });
-             setCashfreeInstance(cashfree);
-             console.log('Cashfree Drop-in SDK Initialized successfully.');
+             console.log(`Cashfree Drop-in (v3): Initializing SDK in ${cashfreeMode} mode...`);
+             // Initialize using the global Cashfree object (v3 style)
+             // The `load` function might be specific to v2 or a different package.
+             // For v3 drop-in, you typically just use the window.Cashfree object directly
+             // after the script loads. Let's store the loaded object.
+             setCashfreeInstance(window.Cashfree); // Store the SDK object
+             console.log('Cashfree Drop-in SDK (v3) Object ready.');
          } catch (error) {
-             console.error("Failed to initialize Cashfree Drop-in SDK:", error);
+             console.error("Failed to prepare Cashfree Drop-in SDK (v3):", error);
              toast({
                  title: "Payment Error",
-                 description: "Could not initialize the payment interface. Please refresh or try again later.",
+                 description: "Could not initialize the payment interface. Please refresh.",
                  variant: "destructive",
              });
          }
      } else if (cashfreeInstance) {
-        console.log("Cashfree Drop-in: SDK already initialized.");
-     } else {
-         console.log("Cashfree Drop-in: Waiting for SDK script to load...");
+        console.log("Cashfree Drop-in (v3): SDK already ready.");
+     } else if (typeof window !== 'undefined' && !window.Cashfree) {
+         console.warn("Cashfree Drop-in (v3): Script loaded, but window.Cashfree not found yet. Retrying init might be needed.");
+         // Optionally, you could add a small delay and retry here if needed
      }
   };
 
@@ -93,19 +97,18 @@ export default function Home() {
           setLocation(detectedLocation);
           try {
             const addr = await getAddress(detectedLocation);
-            // Only serve Cooch Behar
              if (addr.formattedAddress.toLowerCase().includes('cooch behar')) {
                setAddress(addr.formattedAddress);
                toast({ title: "Location Detected", description: addr.formattedAddress });
              } else {
                setAddress("Service unavailable outside Cooch Behar");
-               toast({ title: "Location Error", description: "Sorry, Gepto Express currently only serves Cooch Behar, West Bengal.", variant: "destructive" });
-               setLocation(null); // Reset location if outside service area
+               toast({ title: "Location Error", description: "Gepto Express serves Cooch Behar only.", variant: "destructive" });
+               setLocation(null);
              }
           } catch (error) {
             console.error("Error fetching address:", error);
             setAddress("Could not fetch address");
-            toast({ title: "Location Error", description: "Could not fetch address for your location.", variant: "destructive" });
+            toast({ title: "Location Error", description: "Could not fetch address.", variant: "destructive" });
           } finally {
             setLoadingLocation(false);
           }
@@ -114,13 +117,13 @@ export default function Home() {
           console.error("Geolocation error:", error);
           setAddress("Location access denied. Please enter manually.");
           setLoadingLocation(false);
-          toast({ title: "Location Access Denied", description: "Please enable location services or enter your address manually.", variant: "destructive" });
+          toast({ title: "Location Access Denied", description: "Please enable location or enter address.", variant: "destructive" });
         }
       );
     } else {
       setAddress("Geolocation not available. Please enter manually.");
       setLoadingLocation(false);
-      toast({ title: "Location Not Supported", description: "Geolocation is not supported by your browser. Please enter your address manually.", variant: "destructive" });
+      toast({ title: "Location Not Supported", description: "Enter address manually.", variant: "destructive" });
     }
   }, [toast]);
 
@@ -128,12 +131,11 @@ export default function Home() {
   const handleManualAddressSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!manualAddress.trim()) {
-      toast({ title: "Invalid Address", description: "Please enter a valid address.", variant: "destructive" });
+      toast({ title: "Invalid Address", description: "Please enter address.", variant: "destructive" });
       return;
     }
-     // Simple check for Cooch Behar
     if (!manualAddress.toLowerCase().includes('cooch behar')) {
-      toast({ title: "Service Area", description: "Sorry, Gepto Express currently only serves Cooch Behar, West Bengal.", variant: "destructive" });
+      toast({ title: "Service Area", description: "Gepto Express serves Cooch Behar only.", variant: "destructive" });
       setAddress("Service unavailable outside Cooch Behar");
       setLocation(null);
       return;
@@ -141,15 +143,19 @@ export default function Home() {
 
     setLoadingLocation(true);
     try {
-      const loc = await getLocation(manualAddress + ", Cooch Behar, West Bengal, India"); // Append region for better accuracy
+      // Append region for accuracy, assuming it's always Cooch Behar based on validation
+      const fullAddress = manualAddress.toLowerCase().includes('cooch behar')
+                          ? manualAddress
+                          : `${manualAddress}, Cooch Behar, West Bengal, India`;
+      const loc = await getLocation(fullAddress);
       setLocation(loc);
-      setAddress(manualAddress); // Use the manually entered address for display
+      setAddress(manualAddress); // Display the user's input
       toast({ title: "Location Set Manually", description: manualAddress });
     } catch (error) {
       console.error("Error fetching location:", error);
-      setAddress("Could not find location for the address.");
+      setAddress("Could not find location.");
       setLocation(null);
-      toast({ title: "Address Error", description: "Could not find location for the entered address.", variant: "destructive" });
+      toast({ title: "Address Error", description: "Could not find location.", variant: "destructive" });
     } finally {
       setLoadingLocation(false);
     }
@@ -158,17 +164,17 @@ export default function Home() {
 
   // 2. Fetch nearby stores based on location
   useEffect(() => {
-    if (location && address.toLowerCase().includes('cooch behar')) { // Only fetch if location is valid and in Cooch Behar
+    if (location && address.toLowerCase().includes('cooch behar')) {
       setLoadingStores(true);
-      getNearbyStores(location, 5) // Assuming a 5km radius
+      getNearbyStores(location, 5) // 5km radius
         .then(setStores)
         .catch(err => {
           console.error("Error fetching stores:", err);
-          toast({ title: "Store Fetch Error", description: "Could not load nearby stores.", variant: "destructive" });
+          toast({ title: "Store Fetch Error", description: "Could not load stores.", variant: "destructive" });
         })
         .finally(() => setLoadingStores(false));
     } else {
-      setStores([]); // Clear stores if location is not valid or outside Cooch Behar
+      setStores([]);
     }
   }, [location, address, toast]);
 
@@ -179,27 +185,25 @@ export default function Home() {
       .then(setCategories)
       .catch(err => {
         console.error("Error fetching categories:", err);
-        toast({ title: "Category Fetch Error", description: "Could not load product categories.", variant: "destructive" });
+        toast({ title: "Category Fetch Error", description: "Could not load categories.", variant: "destructive" });
       })
       .finally(() => setLoadingCategories(false));
   }, [toast]);
 
-  // 4. Fetch products when a category and store are selected
-  // For simplicity, we'll assume the first store is selected if available
+  // 4. Fetch products when category and store selected
   useEffect(() => {
     if (selectedCategory && stores.length > 0) {
       setLoadingProducts(true);
-      // Using the first store's ID for simplicity
-      getProductsByStoreAndCategory(stores[0].id, selectedCategory.id)
+      getProductsByStoreAndCategory(stores[0].id, selectedCategory.id) // Use first store's ID
         .then(setProducts)
         .catch(err => {
           console.error("Error fetching products:", err);
-          toast({ title: "Product Fetch Error", description: `Could not load products for ${selectedCategory.name}.`, variant: "destructive" });
+          toast({ title: "Product Fetch Error", description: `Could not load ${selectedCategory.name}.`, variant: "destructive" });
           setProducts([]);
         })
         .finally(() => setLoadingProducts(false));
     } else {
-      setProducts([]); // Clear products if no category or store
+      setProducts([]);
     }
   }, [selectedCategory, stores, toast]);
 
@@ -229,16 +233,14 @@ export default function Home() {
         return prevCart.filter(item => item.id !== productId);
       }
     });
-     toast({ title: "Item Updated", description: `Item quantity updated in cart.` });
+     toast({ title: "Item Updated", description: `Cart updated.` });
   };
 
    const getCartTotal = () => {
-    // Ensure total is never negative and has 2 decimal places
     const total = cart.reduce((total, item) => total + item.price * item.quantity, 0);
-    return Math.max(0, total); // Return as number for calculations
+    return Math.max(0, total);
    };
 
-   // Calculate total after applying Gepto Coins
    const getFinalAmount = () => {
      const total = getCartTotal();
      if (useGeptoCoins) {
@@ -254,78 +256,106 @@ export default function Home() {
 
   // Checkout Function
   const handleCheckout = async () => {
+     // Use the stored v3 SDK instance
      if (!cashfreeInstance) {
-       toast({
-         title: "Payment Error",
-         description: "Payment interface is not ready. Please wait a moment and try again.",
-         variant: "destructive",
-       });
-       return;
+       console.error("Cashfree Drop-in (v3): SDK instance not ready yet.");
+       // Try initializing again, maybe it wasn't ready on first load
+       await initializeCashfreeDropin();
+       // Re-check after attempting re-initialization
+       if (!cashfreeInstance) {
+            toast({
+             title: "Payment Error",
+             description: "Payment interface not ready. Please wait or refresh.",
+             variant: "destructive",
+           });
+           return;
+       }
      }
+
      if (cart.length === 0) {
-       toast({ title: "Empty Cart", description: "Please add items to your cart before checking out.", variant: "destructive" });
+       toast({ title: "Empty Cart", description: "Add items to cart first.", variant: "destructive" });
        return;
      }
      setIsCheckingOut(true);
 
      // --- Placeholder Customer Details ---
-     // In a real app, you'd get this from user authentication/profile
      const customerDetails = {
-       customerId: `USER_${Math.random().toString(36).substring(2, 10)}`, // Replace with actual user ID
-       customerEmail: 'test@example.com', // Replace with actual user email
-       customerPhone: '9876543210', // Replace with actual user phone
-       customerName: 'Test User' // Optional: Replace with actual user name
+       customerId: `USER_${Math.random().toString(36).substring(2, 10)}`,
+       customerEmail: 'test@example.com', // Use a valid-looking email for testing
+       customerPhone: '9999999999', // Use a valid-looking phone number
+       customerName: 'Test User'
      };
      // --- End Placeholder ---
 
      try {
-       const total = getCartTotal(); // Original total
-       const finalAmount = getFinalAmount(); // Amount after coins
+       const total = getCartTotal();
+       const finalAmount = getFinalAmount();
 
        console.log('Initiating payment server action...');
-       // Pass both the original total and the coin usage details
        const response = await initiatePayment({
          items: cart,
-         totalAmount: total, // Send original total to server action
+         totalAmount: total,
          customerDetails: customerDetails,
-         useGeptoCoins: useGeptoCoins, // Send the flag
-         geptoCoinBalance: geptoCoinBalance, // Send current balance
+         useGeptoCoins: useGeptoCoins,
+         geptoCoinBalance: geptoCoinBalance,
        });
        console.log('Server action response:', response);
 
 
        if (response.success && response.payment_session_id && response.order_id) {
          console.log('Payment session created:', response.payment_session_id);
-         // Use the Cashfree Drop-in SDK
-         cashfreeInstance.checkout({
+         // Use the Cashfree Drop-in SDK (v3 style)
+         cashfreeInstance.drop({
             paymentSessionId: response.payment_session_id,
             orderId: response.order_id,
-            // Optional: Customize appearance or behavior
-            // display: { backdrop: true, hideIcon: false },
-            // style: { color: '#ffffff', backgroundColor: '#006400' } // Example styling
+            // Components determine the payment flow ('order-details', 'card', 'upi', 'app', 'netbanking', 'paylater', 'credicardemi', 'cardlessemi')
+            components: [
+                "order-details",
+                "card",
+                "upi",
+                "app", // For wallets like Paytm etc.
+                "netbanking",
+            ],
+            // Optional: on Success/Error callbacks
+             onSuccess: function(data: any) {
+                console.log("Payment Success Data:", data);
+                // You might want to redirect or show a success message here based on 'data.order.status'
+                 if (data && data.order && data.order.status === "PAID") {
+                     // Redirect to your order status page
+                    window.location.href = `/order/status?order_id=${data.order.orderId}`;
+                 } else {
+                     // Handle cases where it might be pending or other statuses
+                     toast({ title: "Payment Processing", description: "Payment status: " + (data?.order?.status || 'Pending') });
+                 }
+            },
+            onFailure: function(data: any) {
+                console.error("Payment Failure Data:", data);
+                toast({
+                    title: "Payment Failed",
+                    description: data?.order?.errorText || "Transaction failed. Please try again.",
+                    variant: "destructive",
+                });
+                // Maybe redirect to cart or show try again option
+             },
          });
-         // The Drop-in SDK handles the rest (showing payment options, redirection, etc.)
+
        } else if (response.success && response.order_id && !response.payment_session_id) {
-          // This handles the case where the order was fully paid with Gepto Coins
-          console.log("Order fully paid with Gepto Coins, no payment gateway needed.");
+          console.log("Order fully paid with Gepto Coins.");
           toast({
               title: "Order Placed",
-              description: response.message || "Successfully placed order using Gepto Coins.",
+              description: response.message || "Placed order using Gepto Coins.",
           });
-          // Optionally redirect to an order success page or clear the cart
-          setCart([]); // Clear cart after successful coin-only order
-          setUseGeptoCoins(false); // Reset checkbox
-          // Example redirect: router.push(`/order/status?order_id=${response.order_id}`);
-       }
-       else {
-         // Throw error received from the server action
-         throw new Error(response.error || 'Failed to initiate payment. Check server logs for details.');
+          setCart([]);
+          setUseGeptoCoins(false);
+          // Consider redirecting: window.location.href = `/order/status?order_id=${response.order_id}`;
+       } else {
+         throw new Error(response.error || 'Failed to initiate payment. Check server logs.');
        }
      } catch (error: any) {
        console.error('Checkout error:', error);
        toast({
          title: 'Checkout Failed',
-         description: error.message || 'Could not start the payment process. Please try again.',
+         description: error.message || 'Could not start payment. Try again.',
          variant: 'destructive',
        });
      } finally {
@@ -342,17 +372,17 @@ export default function Home() {
 
   return (
     <>
-      {/* Load Cashfree SDK Script */}
+      {/* Load Cashfree v3 SDK Script */}
       <Script
-        id="cf-checkout-js"
-        src={cashfreeScriptSrc}
-        strategy="lazyOnload" // Load after other resources, but before hydration if needed early
+        id="cf-dropin-js" // Changed ID for clarity
+        src={cashfreeScriptSrc} // Use the dynamically determined src
+        strategy="lazyOnload"
         onLoad={initializeCashfreeDropin} // Initialize after script loads
         onError={(e) => {
-            console.error("Cashfree SDK script failed to load:", e);
+            console.error("Cashfree Drop-in SDK (v3) script failed to load:", e);
             toast({
                 title: "Payment Error",
-                description: "Failed to load payment script. Checkout may not work.",
+                description: "Failed to load payment script.",
                 variant: "destructive",
             });
         }}
@@ -366,7 +396,7 @@ export default function Home() {
               <MapPin className="text-primary" /> Delivery Location
             </CardTitle>
             <CardDescription>
-              {loadingLocation ? "Detecting location..." : address || "Enter your address"}
+              {loadingLocation ? "Detecting location..." : address || "Enter address"}
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -374,53 +404,62 @@ export default function Home() {
               <form onSubmit={handleManualAddressSubmit} className="flex gap-2">
                 <Input
                   type="text"
-                  placeholder="Enter your address in Cooch Behar"
+                  placeholder="Enter address in Cooch Behar"
                   value={manualAddress}
                   onChange={(e) => setManualAddress(e.target.value)}
                   className="flex-grow"
+                  required // Make address input required
                 />
-                <Button type="submit">Set Location</Button>
+                <Button type="submit" disabled={loadingLocation}>Set Location</Button>
               </form>
             )}
+             {address && !address.toLowerCase().includes('cooch behar') && !loadingLocation && (
+                  <p className="text-sm text-destructive mt-2">Service is only available in Cooch Behar.</p>
+             )}
           </CardContent>
         </Card>
 
-        {/* Only show content if location is in Cooch Behar */}
+        {/* Main content - only if location is valid */}
         {location && address.toLowerCase().includes('cooch behar') && (
           <>
-            {/* Store Selection (Simplified: Assuming first store) */}
+            {/* Store Selection Info */}
             {loadingStores && <p>Loading nearby stores...</p>}
             {stores.length > 0 && !loadingStores && (
-              <p className="text-sm text-muted-foreground">Showing items from: <strong>{stores[0].name}</strong></p>
+              <p className="text-sm text-muted-foreground">Items from: <strong>{stores[0].name}</strong></p>
             )}
              {stores.length === 0 && !loadingStores && !loadingLocation && (
-              <p className="text-sm text-destructive">No stores found for your location in Cooch Behar.</p>
+              <p className="text-sm text-destructive">No stores found nearby.</p>
             )}
 
 
             {/* Categories Section */}
-            <section>
-              <h2 className="text-2xl font-semibold mb-4">Categories</h2>
-              {loadingCategories ? (
-                <p>Loading categories...</p>
-              ) : (
-                <div className="flex flex-wrap gap-2">
-                  {categories.map(category => (
-                    <Button
-                      key={category.id}
-                      variant={selectedCategory?.id === category.id ? "default" : "outline"}
-                      onClick={() => setSelectedCategory(category)}
-                      className="transition-transform active:scale-95"
-                    >
-                      {category.name}
-                    </Button>
-                  ))}
-                </div>
-              )}
-            </section>
+             {stores.length > 0 && ( // Only show categories if stores are found
+                 <section>
+                   <h2 className="text-2xl font-semibold mb-4">Categories</h2>
+                   {loadingCategories ? (
+                     <p>Loading categories...</p>
+                   ) : categories.length > 0 ? (
+                     <div className="flex flex-wrap gap-2">
+                       {categories.map(category => (
+                         <Button
+                           key={category.id}
+                           variant={selectedCategory?.id === category.id ? "default" : "outline"}
+                           onClick={() => setSelectedCategory(category)}
+                           className="transition-transform active:scale-95"
+                         >
+                           {category.name}
+                         </Button>
+                       ))}
+                     </div>
+                   ) : (
+                      <p>No categories found.</p>
+                   )}
+                 </section>
+             )}
+
 
             {/* Products Section */}
-            {selectedCategory && (
+            {selectedCategory && stores.length > 0 && (
               <section>
                 <h2 className="text-2xl font-semibold mb-4">
                   {selectedCategory.name}
@@ -429,7 +468,7 @@ export default function Home() {
                    <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
                   <Input
                     type="search"
-                    placeholder="Search within category..."
+                    placeholder="Search in category..."
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
                     className="pl-8"
@@ -442,13 +481,16 @@ export default function Home() {
                   <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
                     {filteredProducts.map(product => (
                       <Card key={product.id} className="overflow-hidden flex flex-col">
-                         <CardHeader className="p-0 relative aspect-square">
+                         <CardHeader className="p-0 relative aspect-square bg-muted">
                             <Image
-                              src={product.imageUrl || `https://picsum.photos/300/300?random=${product.id}`}
+                              // Use picsum placeholder if imageUrl is invalid/missing
+                              src={product.imageUrl && product.imageUrl.startsWith('https') ? product.imageUrl : `https://picsum.photos/300/300?random=${product.id}`}
                               alt={product.name}
-                             fill={true} // Use fill with relative parent
-                             style={{ objectFit: "cover" }} // Use style for objectFit with fill
+                             fill={true}
+                             style={{ objectFit: "cover" }}
                               data-ai-hint="product grocery item"
+                              // Add error handling for images
+                              onError={(e) => { (e.target as HTMLImageElement).src = `https://picsum.photos/300/300?random=${product.id}`; }}
                              />
                          </CardHeader>
                         <CardContent className="p-4 flex-grow">
@@ -477,18 +519,18 @@ export default function Home() {
                     ))}
                   </div>
                 ) : (
-                  <p>No products found {searchTerm ? `for "${searchTerm}"` : ""} in this category.</p>
+                  <p>No products found {searchTerm ? `for "${searchTerm}"` : ""} in {selectedCategory.name}.</p>
                 )}
               </section>
             )}
 
-            {/* Cart Summary (Floating or fixed) */}
+            {/* Cart Summary */}
              {cart.length > 0 && (
-              <Card className="fixed bottom-4 right-4 w-72 shadow-xl z-50 bg-card"> {/* Ensure background for visibility */}
+              <Card className="fixed bottom-4 right-4 w-72 shadow-xl z-50 bg-card">
                 <CardHeader>
                   <CardTitle className="flex items-center justify-between text-lg">
                     Your Cart
-                    <Badge >{getCartItemCount()}</Badge> {/* Use default variant */}
+                    <Badge >{getCartItemCount()}</Badge>
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
@@ -511,7 +553,7 @@ export default function Home() {
                     </div>
                     {useGeptoCoins && geptoCoinBalance > 0 && (
                         <div className="text-xs text-green-600 mb-2">
-                          - ₹{Math.min(getCartTotal(), geptoCoinBalance).toFixed(2)} (Coins Applied)
+                          - ₹{Math.min(getCartTotal(), geptoCoinBalance).toFixed(2)} (Applied)
                         </div>
                     )}
 
@@ -532,8 +574,9 @@ export default function Home() {
                   <Button
                       onClick={handleCheckout}
                       className="w-full transition-transform active:scale-95"
-                      disabled={isCheckingOut || !cashfreeInstance || getFinalAmount() < 0} // Disable button during checkout, if SDK not ready, or if amount is invalid
-                      aria-live="polite" // Announce loading state change
+                       // Disable button during checkout, if SDK not ready, if amount invalid, or if location invalid
+                      disabled={isCheckingOut || !cashfreeInstance || getFinalAmount() < 0 || !location || !address.toLowerCase().includes('cooch behar') }
+                      aria-live="polite"
                   >
                      {isCheckingOut ? (
                       <>
@@ -541,7 +584,7 @@ export default function Home() {
                        Processing...
                       </>
                      ) : (
-                      getFinalAmount() <= 0.009 && useGeptoCoins ? 'Place Order with Coins' : 'Proceed to Payment' // Adjust button text
+                      getFinalAmount() <= 0.009 && useGeptoCoins ? 'Place Order with Coins' : 'Proceed to Payment'
                      )}
                    </Button>
                 </CardFooter>
@@ -552,4 +595,11 @@ export default function Home() {
       </div>
     </>
   );
+}
+
+// Helper type for Cashfree window object (v3)
+declare global {
+  interface Window {
+    Cashfree?: any; // Use 'any' for simplicity, or define a more specific interface if needed
+  }
 }
