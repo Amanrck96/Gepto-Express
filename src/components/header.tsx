@@ -31,15 +31,19 @@ export function Header() {
            </div>
 
            {/* Other navigation items */}
-           <Button variant="ghost" size="icon" aria-label="Orders">
-             <Package className="h-5 w-5" />
+           <Button variant="ghost" size="icon" aria-label="Orders" asChild>
+             <Link href="/orders">
+               <Package className="h-5 w-5" />
+             </Link>
            </Button>
            <Button variant="ghost" size="icon" aria-label="Shopping Cart">
              <ShoppingCart className="h-5 w-5" />
              {/* Add badge for cart count later */}
            </Button>
-           <Button variant="ghost" size="icon" aria-label="User Profile">
-             <User className="h-5 w-5" />
+           <Button variant="ghost" size="icon" aria-label="User Profile" asChild>
+             <Link href="/profile">
+               <User className="h-5 w-5" />
+             </Link>
            </Button>
         </nav>
       </div>
