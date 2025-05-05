@@ -1,4 +1,3 @@
-
 # See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
 
 # dependencies
@@ -25,11 +24,10 @@
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
-pnpm-debug.log*
+*.log
 
 # local env files
 .env*.local
-.env
 
 # vercel
 .vercel
@@ -38,14 +36,6 @@ pnpm-debug.log*
 *.tsbuildinfo
 next-env.d.ts
 
-# Temporary patch files
-patches/
-
-# Firebase Emulator
-firebase-debug.log
-*.log
-database-debug.log
-firestore-debug.log
-pubsub-debug.log
-storage-debug.log
-ui-debug.log
+# genkit
+.genkit/log/
+.genkit/trace/

@@ -17,6 +17,7 @@ const nextConfig: NextConfig = {
         pathname: '/**',
       },
       // Add example.com for placeholder images used in services
+      // Keep this only if you still use example.com placeholders elsewhere
       {
         protocol: 'https',
         hostname: 'example.com',
@@ -28,11 +29,10 @@ const nextConfig: NextConfig = {
    // Make environment variables available to the client-side if necessary
    // IMPORTANT: Only expose non-sensitive variables here. API keys should generally
    // remain server-side unless explicitly required by a client-side SDK.
-   // Cashfree SDK `load` function might need the mode ('sandbox'/'production')
-   // but not necessarily the keys themselves on the client.
   env: {
-    // NEXT_PUBLIC_CASHFREE_MODE: process.env.NODE_ENV === 'production' ? 'production' : 'sandbox',
-    NEXT_PUBLIC_APP_URL: process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:9002', // Ensure this is set for return URLs
+    // Expose the Cashfree App ID for the client-side SDK
+    NEXT_PUBLIC_CASHFREE_APP_ID: process.env.CF_APP_ID, // Read from CF_APP_ID set in .env.local
+    NEXT_PUBLIC_APP_URL: process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:9002', // Ensure this is set correctly for return URLs
   },
 };
 
