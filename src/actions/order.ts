@@ -12,176 +12,227 @@ interface OrderStatusResponse {
   isCoinOrder?: boolean; // Flag to indicate if it was a Gepto Coin order
 }
 
-// Function to configure and initialize Cashfree SDK (v5.x style) for status check
-// It now RETURNS the initialized instance.
-function initializeCashfreeSDKForStatus() {
-  console.log('Cashfree Order Status Info: Initializing SDK instance (v5.x style) for status check...');
-  // ** Use CF_APP_ID and CF_SECRET_KEY from .env.local **
-  const appId = process.env.CF_APP_ID;
-  const secretKey = process.env.CF_SECRET_KEY;
+// Environment Variable Check at Module Level (Fail Fast) - Consistent with payment.ts
+const CF_APP_ID = process.env.CF_APP_ID;
+const CF_SECRET_KEY = process.env.CF_SECRET_KEY;
 
-  if (!appId) {
-     console.error('Cashfree Order Status FATAL Error: CF_APP_ID environment variable is MISSING.');
-     throw new Error('Payment gateway configuration error for status check: App ID missing.');
-   }
-    if (!secretKey) {
-     console.error('Cashfree Order Status FATAL Error: CF_SECRET_KEY environment variable is MISSING.');
-     throw new Error('Payment gateway configuration error for status check: Secret Key missing.');
-   }
-   console.log(`Cashfree Order Status Info: Using App ID (from env): ${appId}`); // Log the actual App ID
-  // Do not log the secret key
-
-  // Determine environment based on App ID prefix (TEST or production)
-   const isTestKey = appId.startsWith('TEST');
-   const cashfreeEnv = isTestKey ? Cashfree.Environment.SANDBOX : Cashfree.Environment.PRODUCTION;
-   console.log(`Cashfree Order Status Info: Determined environment: ${cashfreeEnv} (App ID starts with ${isTestKey ? 'TEST' : 'Prod'})`);
+if (!CF_APP_ID) {
+  console.error('FATAL CONFIGURATION ERROR (Order Status): CF_APP_ID environment variable is MISSING.');
+  throw new Error('Server configuration error: Payment Gateway App ID is not configured.');
+}
+if (!CF_SECRET_KEY) {
+  console.error('FATAL CONFIGURATION ERROR (Order Status): CF_SECRET_KEY environment variable is MISSING.');
+  throw new Error('Server configuration error: Payment Gateway Secret Key is not configured.');
+}
+console.log(`Order Status Action: Using CF_APP_ID starting with: ${CF_APP_ID.substring(0, 4)}...`); // Log prefix only
 
 
-  try {
-    // **Initialize using the constructor (v5.x style with positional arguments)**
-    const cashfree = new Cashfree(cashfreeEnv, appId, secretKey);
-    console.log(`Cashfree Order Status Info: SDK instance initialized in ${cashfreeEnv} mode for status check.`);
+// Determine Cashfree environment based on App ID prefix - Consistent with payment.ts
+const isProductionKey = !CF_APP_ID.startsWith('TEST');
+const cashfreeEnv = isProductionKey ? Cashfree.Environment.PRODUCTION : Cashfree.Environment.SANDBOX;
+console.log(`Order Status Action: Determined Cashfree Environment: ${cashfreeEnv} (Production Key: ${isProductionKey})`);
 
-    // **Immediate Check**: Check for the specific method needed (orders.fetch)
-    if (!cashfree || typeof cashfree.orders?.fetch !== 'function') {
-      console.error("Cashfree Order Status FATAL Error: SDK instance invalid IMMEDIATELY after initialization (missing 'orders' property or 'orders.fetch'). Instance:", cashfree);
-      throw new Error('Payment SDK failed internal consistency check after initialization for status check (missing orders property or fetch method).');
+
+// Singleton instance of Cashfree SDK for status checks
+let cashfreeStatusInstance: Cashfree | null = null;
+
+function getCashfreeStatusInstance(): Cashfree {
+  if (cashfreeStatusInstance) {
+    // Quick check on existing instance validity (basic)
+    if (typeof cashfreeStatusInstance.orders?.fetch === 'function') {
+      // console.log('Order Status Action: Reusing existing valid Cashfree SDK instance.');
+      return cashfreeStatusInstance;
     } else {
-        console.log("Cashfree Order Status Info: SDK instance passed initial validation (has orders.fetch).");
+      console.warn('Order Status Action: Existing Cashfree SDK instance seems invalid. Re-initializing...');
+      cashfreeStatusInstance = null; // Force re-initialization
+    }
+  }
+
+  console.log(`Order Status Action: Initializing new Cashfree SDK instance for environment: ${cashfreeEnv}...`);
+  try {
+    // Initialize using the constructor (v5.x style)
+    const instance = new Cashfree(cashfreeEnv, CF_APP_ID!, CF_SECRET_KEY!); // We already checked they exist
+    console.log(`Order Status Action: SDK instance created in ${cashfreeEnv} mode.`);
+
+    // **Crucial Check**: Verify the necessary methods exist IMMEDIATELY
+    if (!instance || typeof instance !== 'object' || typeof instance.orders?.fetch !== 'function') {
+      console.error("Order Status Action FATAL Error: SDK instance invalid IMMEDIATELY after creation. Missing 'orders.fetch'. Instance keys:", instance ? Object.keys(instance) : 'null', 'Orders keys:', instance?.orders ? Object.keys(instance.orders): 'N/A');
+      throw new Error('Payment SDK failed internal consistency check after initialization (missing orders.fetch method).');
+    } else {
+      console.log("Order Status Action: SDK instance passed initial validation (has orders.fetch).");
     }
 
-    return cashfree; // Return the instance
-   } catch (initError: any) {
-      console.error('Cashfree Order Status FATAL Error: Failed to initialize Cashfree SDK instance for status check or failed initial check.', initError);
-      throw new Error(`Payment SDK initialization error for status check: ${initError.message}`);
+    cashfreeStatusInstance = instance;
+    return cashfreeStatusInstance;
+  } catch (initError: any) {
+    console.error('Order Status Action FATAL Error: Failed to initialize Cashfree SDK instance.', initError);
+     if (initError.message?.includes('Authentication')) {
+         console.error('Order Status Action Diagnosis: Authentication likely failed during init. Check CF_APP_ID and CF_SECRET_KEY against the environment (' + cashfreeEnv + ').');
+    }
+    throw new Error(`Payment SDK initialization error for status check: ${initError.message}`);
   }
 }
 
 
 export async function getOrderStatus(orderId: string): Promise<OrderStatusResponse> {
 
-  if (!orderId) {
-    return { success: false, error: 'Order ID is required.' };
+  if (!orderId || typeof orderId !== 'string' || orderId.trim() === '') {
+    return { success: false, error: 'Invalid Order ID provided.' };
   }
 
-  // Check if it's a Gepto Coin order
+  // 1. Handle Gepto Coin Orders (Internal Check)
   if (orderId.startsWith('GEPTO-COINS-')) {
-    console.log(`Order ${orderId} identified as a Gepto Coin order.`);
-    // TODO: Add database check to confirm coin deduction
+    console.log(`Order Status Action: Order ${orderId} identified as a Gepto Coin order.`);
+    // --- TODO: Add Database Check ---
+    // This is essential to confirm the coin transaction associated with this order ID
+    // actually completed successfully in your system.
+    // If the DB shows the coin deduction failed or is pending, return appropriate status.
+    // For now, assume success if it's a GEPTO-COINS ID.
+    // Example: const coinTxStatus = await getCoinTransactionStatus(orderId);
+    // if (coinTxStatus === 'SUCCESS') { ... } else { return { ... status: 'FAILED' ...}}
+    console.log(`---> TODO: Verify internal status of Gepto Coin order ${orderId} in database <---`);
+    // --- End TODO ---
     return {
       success: true,
-      order_status: 'PAID',
+      order_status: 'PAID', // Assuming successful coin deduction
       transaction_status: 'SUCCESS',
-      payment_amount: 0,
+      payment_amount: 0, // Coins have no monetary value in this context
       isCoinOrder: true,
     };
   }
 
-
+  // 2. Initialize Cashfree SDK for regular orders
    let cashfree: Cashfree;
    try {
-     cashfree = initializeCashfreeSDKForStatus();
+     cashfree = getCashfreeStatusInstance();
    } catch (sdkError: any) {
-     console.error("Cashfree Order Status Error: Failed to initialize SDK during getOrderStatus.", sdkError);
-     return { success: false, error: `Payment SDK initialization error for status check: ${sdkError.message || "Check server logs."}` };
+     console.error("Order Status Action Error: Failed to get/initialize SDK instance during getOrderStatus.", sdkError);
+     return { success: false, error: `Payment SDK initialization failed for status check: ${sdkError.message}` };
    }
 
-   // **Redundant Check (Defense in depth)** - Ensure orders.fetch is still present
-   if (!cashfree || typeof cashfree !== 'object' || typeof cashfree.orders !== 'object' || typeof cashfree.orders.fetch !== 'function') {
-        console.error("Cashfree Order Status FATAL Error: SDK instance appears invalid before fetch call (missing 'orders' property or 'orders.fetch'). Instance:", cashfree ? Object.keys(cashfree) : 'null', cashfree?.orders ? Object.keys(cashfree.orders) : 'no orders prop');
-        return { success: false, error: 'Payment SDK configuration error for status check: SDK failed to initialize properly (missing orders property or fetch method).' };
-    } else {
-        console.log("Cashfree Order Status Info: SDK instance validated again before calling orders.fetch.");
+   // --- Redundant Check (Defense in depth) --- Should have been caught by getCashfreeStatusInstance
+   if (!cashfree || typeof cashfree.orders?.fetch !== 'function') {
+        console.error("Order Status Action FATAL Error: SDK instance invalid before fetch call (consistency check).", cashfree ? Object.keys(cashfree) : 'null');
+        return { success: false, error: 'Internal Server Error: Payment SDK is not configured correctly for status check (failed redundant check).' };
     }
+   // console.log("Order Status Action: SDK instance validated again before calling orders.fetch.");
 
 
+  // 3. Call Cashfree API to Fetch Order Status
   try {
-    console.log(`Cashfree Get Order Request (v5.x style) for order_id: ${orderId}`);
+    console.log(`Order Status Action: Calling cashfree.orders.fetch for order_id: ${orderId}`);
 
     // *** Use the instance 'orders.fetch' method (v5.x SDK style) ***
     const response = await cashfree.orders.fetch(orderId);
-    console.log('Cashfree Get Order Response keys (v5.x) (if available):', response ? Object.keys(response) : 'null/undefined');
-    console.log('Cashfree Get Order Response Data (v5.x) (if available):', response ? { order_id: response.order_id, cf_order_id: response.cf_order_id, order_status: response.order_status } : 'No data');
+    console.log(`Order Status Action Info: Cashfree order fetch API call successful for order ${orderId}.`);
+    // console.log('Order Status Action Debug: API Response keys:', response ? Object.keys(response) : 'null/undefined');
+    // console.log('Order Status Action Debug: API Response data (subset):', response ? { order_id: response.order_id, cf_order_id: response.cf_order_id, order_status: response.order_status, order_amount: response.order_amount } : 'No data');
 
 
-    if (response) {
+    if (response && response.order_id) { // Check if we got a valid response object with order_id
+        // Validate the structure minimally
         if (typeof response.order_status !== 'string') {
-             console.warn(`Order status missing or not a string for order ${orderId}. Response data:`, response);
-             if (response.order_id && response.cf_order_id) {
-                return { success: true, order_status: 'PENDING', error: 'Order status not yet available from gateway.' };
-             } else {
-                 console.error(`Incomplete order data for ${orderId} - missing order_status and potentially other key fields.`);
-                return { success: false, error: 'Incomplete order data received from payment gateway.' };
-             }
+             console.warn(`Order Status Action Warning: order_status missing or not a string for order ${orderId}. Marking as PENDING. Response data:`, response);
+             // Return PENDING if status is missing but other details seem okay
+             return {
+                success: true,
+                order_status: 'PENDING',
+                payment_amount: response.order_amount,
+                error: 'Order status not yet available from gateway.',
+                isCoinOrder: false
+             };
         }
 
-      return {
-        success: true,
-        order_status: response.order_status.toUpperCase() as OrderStatusResponse['order_status'],
-        // Cashfree v5 SDK might not have transaction_status directly on fetch response
-        // Adjust based on actual API response if needed.
-        // transaction_status: response.transaction_status,
-        payment_amount: response.order_amount,
-        isCoinOrder: false,
-      };
+         // Normalize status to uppercase for consistency
+        const status = response.order_status.toUpperCase() as OrderStatusResponse['order_status'];
+
+        // Potentially map Cashfree statuses to your internal statuses if needed
+        // e.g., if Cashfree returns 'ACTIVE', maybe you treat it as 'PENDING'
+
+        return {
+            success: true,
+            order_status: status,
+            // Note: Cashfree v5 SDK fetch might not have transaction_status directly.
+            // You might need to fetch transactions separately if required.
+            // transaction_status: response.transaction_status, // Uncomment if available
+            payment_amount: response.order_amount,
+            isCoinOrder: false, // It's not a GEPTO-COINS order if we reached here
+        };
     } else {
-      console.error(`Cashfree returned null or undefined response for order ${orderId}`);
-      return { success: false, error: 'No data received from payment gateway when fetching order status.' };
+      console.error(`Order Status Action Error: Cashfree returned invalid or empty response for order ${orderId}. Response:`, response);
+      return { success: false, error: 'Failed to retrieve valid status data from payment gateway.' };
     }
   } catch (error: any) {
-    console.error(`Cashfree Error: Exception during cashfree.orders.fetch call for order ${orderId}:`, error);
+    console.error(`Order Status Action Error: Exception during cashfree.orders.fetch call for order ${orderId}:`, error);
 
-     let errorMessage = 'An unexpected error occurred while fetching order status.';
-     let statusCode: number | undefined;
+    let userFriendlyError = 'Could not retrieve order status. Please try again or contact support.';
+    let loggedError = 'An unexpected error occurred while fetching order status.';
+    let statusCode: number | undefined;
 
-     if (error.response && error.response.data) {
+    // --- Detailed Error Parsing ---
+     if (error.response && error.response.data) { // Axios-like error structure
         statusCode = error.response.status;
         const responseData = error.response.data;
-        console.error('Cashfree Order Status Error: Detailed API Error Response Data:', responseData);
+        console.error('Order Status Action Error: Detailed API Error Response Data:', responseData);
 
-        if (responseData && typeof responseData === 'object') {
-            if (responseData.message) {
-                 errorMessage = responseData.message;
-                 if (responseData.code) {
-                     errorMessage += ` (Code: ${responseData.code})`;
-                     if (['authentication_failed', 'request_failed', 'authorization_failed'].includes(responseData.code) || responseData.type === 'authentication_error') {
-                          console.error("Cashfree Order Status Authentication Error: Verify API keys/environment.");
-                          errorMessage = `Authentication failed with Cashfree during status check. Check API credentials/environment. (Code: ${responseData.code})`;
-                      } else if (statusCode === 404 || responseData.type === 'not_found_error' || responseData.code === 'order_id_not_found') {
-                           console.warn(`Cashfree Order Status: Order ${orderId} not found.`);
-                           errorMessage = 'Order not found.';
-                      }
-                 }
-            } else {
-                 errorMessage = `Cashfree API Error during status check: Status ${statusCode}. Response: ${JSON.stringify(responseData)}`;
-            }
+        loggedError = `Cashfree API Error (Status Check): Status ${statusCode}. Code: ${responseData.code}. Message: ${responseData.message}. Type: ${responseData.type}.`;
+
+        if (responseData.message) {
+            userFriendlyError = responseData.message; // Use Cashfree's message
+            if (responseData.code) {
+                 userFriendlyError += ` (Code: ${responseData.code})`;
+                 if (['authentication_failed', 'request_failed', 'authorization_failed'].includes(responseData.code) || responseData.type === 'authentication_error') {
+                      console.error("Order Status Action Authentication Error: Verify API keys/environment.");
+                      userFriendlyError = `Authentication failed during status check. Please contact support.`;
+                  } else if (statusCode === 404 || responseData.type === 'not_found_error' || responseData.code === 'order_id_not_found') {
+                       console.warn(`Order Status Action: Order ${orderId} not found via API.`);
+                       userFriendlyError = 'Order not found.';
+                  } else {
+                       userFriendlyError = `Payment gateway error during status check. (Code: ${responseData.code})`;
+                  }
+             } else {
+                 userFriendlyError = `Payment gateway error: Status ${statusCode}. Please try again.`;
+             }
         } else {
-             errorMessage = `Cashfree API Error during status check: Status ${statusCode}. No structured data.`;
+             loggedError = `Cashfree API Error (Status Check): Status ${statusCode}. No structured data.`;
+             userFriendlyError = `Payment gateway returned an error (Status ${statusCode}) during status check. Please try again.`;
         }
-     } else if (error instanceof Error) {
-         // Handle general JavaScript errors
-        errorMessage = error.message;
-        console.error('Cashfree Order Status Error: Non-API Error details:', error.name, error.message, error.stack);
+     } else if (error instanceof Error) { // General JavaScript errors
+         loggedError = `Non-API Error (Status Check): ${error.name}: ${error.message}`;
+         console.error('Order Status Action Error: Non-API Error details:', error.name, error.message, error.stack);
 
-         if (errorMessage.includes('cashfree.orders.fetch is not a function')) {
-              console.error('Cashfree Diagnosis: SDK object malformed or init failed. Check `initializeCashfreeSDKForStatus`. Ensure `cashfree-pg` version >= 5.');
-             errorMessage = 'Payment SDK configuration error: orders.fetch method missing (check SDK init/version >= 5).'
-         } else if (errorMessage.includes('Payment SDK initialization error') || errorMessage.includes('Payment gateway configuration error')) {
-              console.error('Cashfree Order Status Diagnosis: SDK init/config failed. Check env vars or instance creation.');
-              errorMessage = 'Payment SDK configuration failed for status check. Check server configuration.';
-         } else if (errorMessage.includes('internal consistency check')) {
-              console.error('Cashfree Diagnosis: SDK internal consistency check failed during init. Check env vars and SDK instantiation in `initializeCashfreeSDKForStatus`.');
-              errorMessage = 'Payment SDK configuration error for status check: Internal consistency check failed during initialization.';
+         if (error.message.includes('orders.fetch is not a function')) {
+              console.error('Order Status Action Diagnosis: SDK object malformed/init failed. Check `getCashfreeStatusInstance`. Ensure `cashfree-pg` version >= 5.');
+              userFriendlyError = 'Payment SDK configuration error (Status Check). Please contact support. (Err: Method Missing)';
+              loggedError += ' - SDK object missing orders.fetch.';
+         } else if (error.message.includes('Payment SDK initialization error') || error.message.includes('Payment gateway configuration error')) {
+              console.error('Order Status Action Diagnosis: SDK init/config failed. Check env vars or instance creation.');
+              userFriendlyError = 'Payment SDK configuration failed (Status Check). Please contact support. (Err: Init Failed)';
+              loggedError += ' - SDK initialization or config issue.';
+         } else if (error.message.includes('internal consistency check')) {
+             console.error('Order Status Action Diagnosis: SDK internal consistency check failed. Check env vars/SDK instantiation.');
+             userFriendlyError = 'Payment SDK configuration error (Status Check). Please contact support. (Err: Consistency Check Failed)';
+             loggedError += ' - SDK internal consistency check failed.';
+         } else {
+              userFriendlyError = 'An unexpected technical issue occurred retrieving status. Please try again later.';
          }
-     } else {
-         console.error('Cashfree Order Status Error: Unknown error structure caught:', error);
+          // Only add the generic message if a more specific one wasn't set
+         if (userFriendlyError === 'Could not retrieve order status. Please try again or contact support.') {
+             userFriendlyError = `An error occurred retrieving status: ${error.message}`;
+         }
+     } else { // Unknown error structure
+         console.error('Order Status Action Error: Unknown error structure caught:', error);
          try {
-             errorMessage = `An unknown error occurred during status check: ${JSON.stringify(error)}`;
+             loggedError = `Unknown error during status check: ${JSON.stringify(error)}`;
          } catch (stringifyError) {
-             errorMessage = 'An unknown and unstringifyable error occurred during order status check.';
+             loggedError = 'An unknown and unstringifyable error occurred during order status check.';
          }
+         userFriendlyError = 'An unexpected error occurred retrieving order status. Please contact support.';
      }
 
-    return { success: false, error: errorMessage, isCoinOrder: false };
+    // Log the detailed error internally, return the user-friendly one
+    console.error("Logged Error (Status Check):", loggedError);
+    return { success: false, error: userFriendlyError, isCoinOrder: false }; // Assume not coin order on error
   }
 }
+
