@@ -1,4 +1,3 @@
-
 'use server';
 
 import { Cashfree } from 'cashfree-pg';
@@ -17,6 +16,7 @@ interface InitiatePaymentInput {
   };
   useGeptoCoins: boolean; // Flag to indicate if Gepto Coins should be used
   geptoCoinBalance: number; // Current Gepto Coin balance
+  paymentMode: 'online' | 'cod'; // Add paymentMode
 }
 
 // Define the expected response structure
@@ -34,20 +34,20 @@ const CF_APP_ID = process.env.CF_APP_ID;
 const CF_SECRET_KEY = process.env.CF_SECRET_KEY;
 const NEXT_PUBLIC_APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:9002'; // Default if not set
 
-if (!CF_APP_ID) {
+if (!CF_APP_ID && process.env.NODE_ENV === 'production') {
   console.error('FATAL CONFIGURATION ERROR: CF_APP_ID environment variable is MISSING.');
   throw new Error('Server configuration error: Payment Gateway App ID is not configured.');
 }
-if (!CF_SECRET_KEY) {
+if (!CF_SECRET_KEY && process.env.NODE_ENV === 'production') {
   console.error('FATAL CONFIGURATION ERROR: CF_SECRET_KEY environment variable is MISSING.');
   throw new Error('Server configuration error: Payment Gateway Secret Key is not configured.');
 }
-console.log(`Payment Action: Using CF_APP_ID starting with: ${CF_APP_ID.substring(0, 4)}...`); // Log prefix only
+console.log(`Payment Action: Using CF_APP_ID starting with: ${CF_APP_ID ? CF_APP_ID.substring(0, 4) : 'N/A'}...`); // Log prefix only
 console.log(`Payment Action: Using NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL}`);
 
 
 // Determine Cashfree environment based on App ID prefix
-const isProductionKey = !CF_APP_ID.startsWith('TEST');
+const isProductionKey = CF_APP_ID && !CF_APP_ID.startsWith('TEST');
 const cashfreeEnv = isProductionKey ? Cashfree.Environment.PRODUCTION : Cashfree.Environment.SANDBOX;
 console.log(`Payment Action: Determined Cashfree Environment: ${cashfreeEnv} (Production Key: ${isProductionKey})`);
 
@@ -96,7 +96,7 @@ function getCashfreeInstance(): Cashfree {
 export async function initiatePayment(
   input: InitiatePaymentInput
 ): Promise<InitiatePaymentResponse> {
-  const { items, totalAmount, customerDetails, useGeptoCoins, geptoCoinBalance } = input;
+  const { items, totalAmount, customerDetails, useGeptoCoins, geptoCoinBalance, paymentMode } = input;
   let effectiveTotalAmount = totalAmount;
   let coinsUsed = 0;
 
@@ -128,7 +128,7 @@ export async function initiatePayment(
     console.log(`Payment Action: Gepto Coins Applied: ${coinsUsed.toFixed(0)}. Original Amount: ${totalAmount.toFixed(2)}, New Amount: ${effectiveTotalAmount.toFixed(2)}`);
 
     // Check if the order is fully covered by coins (using a small tolerance for floating point)
-    if (effectiveTotalAmount < 0.01) {
+    if (effectiveTotalAmount < 0.01 && paymentMode !== 'cod') {
       console.log("Payment Action: Order fully paid with Gepto Coins. Skipping payment gateway.");
       const orderId = `GEPTO-COINS-${uuidv4()}`;
       // --- TODO: Implement Actual Coin Deduction Logic ---
@@ -149,10 +149,20 @@ export async function initiatePayment(
 
    // Ensure final amount is valid for payment gateway
    const finalOrderAmount = parseFloat(effectiveTotalAmount.toFixed(2));
-   if (finalOrderAmount <= 0) {
+   if (finalOrderAmount <= 0 && paymentMode !== 'cod') {
      console.error(`Payment Action Error: Invalid final order amount after deductions: ${finalOrderAmount}`);
      return { success: false, error: 'Order amount must be positive after applying discounts.' };
    }
+
+   if (paymentMode === 'cod') {
+        const orderId = `GEPTO-COD-${uuidv4()}`;
+        console.log(`Payment Action: Order placed with Cash on Delivery. Order ID: ${orderId}`);
+        return {
+            success: true,
+            order_id: orderId,
+            message: 'Order placed successfully with Cash on Delivery.',
+        };
+    }
 
 
   // 3. Initialize Cashfree SDK
@@ -236,7 +246,7 @@ export async function initiatePayment(
   }
 
 
-  console.log(`Payment Action: Preparing to call cashfree.orders.create for order ${orderId} with amount ${finalOrderAmount}...`);
+  console.log(`Payment Action: Preparing to call cashfree.orders.create for order ${orderId} with amount ${finalOrderAmount} for online payment...`);
   // console.log('Payment Action DEBUG: Full request object:', JSON.stringify(request, null, 2)); // Sensitive, use with caution
 
   // 5. Call Cashfree API to Create Order

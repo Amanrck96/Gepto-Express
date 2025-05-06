@@ -1,4 +1,3 @@
-
 'use client'; // Needed for hooks like useState, useEffect
 
 import React, { useState, useEffect, useRef } from 'react';
@@ -45,6 +44,7 @@ export default function Home() {
   const [useGeptoCoins, setUseGeptoCoins] = useState(false); // State for checkbox
   const [isCashfreeSdkReady, setIsCashfreeSdkReady] = useState(false); // Track if SDK script has loaded
   const cashfreeInstanceRef = useRef<any>(null); // Ref to store the initialized SDK instance
+  const [paymentMode, setPaymentMode] = useState<'online' | 'cod'>('online');
 
   const { toast } = useToast();
 
@@ -299,19 +299,10 @@ export default function Home() {
         toast({ title: "Invalid Location", description: "Please set a valid delivery address in Cooch Behar.", variant: "destructive" });
         return;
      }
-     if (!isCashfreeSdkReady || !cashfreeInstanceRef.current) {
-       console.error("Checkout attempt failed: Cashfree SDK not ready or instance not created.");
-       toast({
-         title: "Payment Error",
-         description: "Payment system is not ready. Please wait a moment or refresh the page.",
-         variant: "destructive",
-       });
-       return;
-     }
 
      const finalAmount = getFinalAmount();
      // Add a check for minimum amount if Cashfree requires it (e.g., >= ₹1)
-     if (finalAmount > 0 && finalAmount < 1.00) {
+     if (finalAmount > 0 && finalAmount < 1.00 && paymentMode === 'online') {
          toast({
             title: "Minimum Amount",
             description: "Minimum order amount for online payment is ₹1.00.",
@@ -319,6 +310,18 @@ export default function Home() {
          });
          return;
      }
+
+      if (paymentMode === 'online') {
+          if (!isCashfreeSdkReady || !cashfreeInstanceRef.current) {
+           console.error("Checkout attempt failed: Cashfree SDK not ready or instance not created.");
+           toast({
+             title: "Payment Error",
+             description: "Payment system is not ready. Please wait a moment or refresh the page.",
+             variant: "destructive",
+           });
+           return;
+         }
+      }
 
 
      setIsCheckingOut(true);
@@ -338,7 +341,7 @@ export default function Home() {
        const total = getCartTotal();
        const coinsToUse = getCoinsUsed();
 
-       console.log(`Checkout Initiated: Total=₹${total.toFixed(2)}, Coins Used=${coinsToUse.toFixed(0)}, Final Amount=₹${finalAmount.toFixed(2)}`);
+       console.log(`Checkout Initiated: Total=₹${total.toFixed(2)}, Coins Used=${coinsToUse.toFixed(0)}, Final Amount=₹${finalAmount.toFixed(2)}, Payment Mode: ${paymentMode}`);
        console.log('Calling initiatePayment server action...');
 
        // 2. Call Server Action to create Cashfree order (or handle coin-only payment)
@@ -348,13 +351,14 @@ export default function Home() {
          customerDetails: customerDetails,
          useGeptoCoins: useGeptoCoins,
          geptoCoinBalance: geptoCoinBalance,
+         paymentMode: paymentMode, // Pass the selected payment mode
        });
 
        console.log('Server action response:', response);
 
        // 3. Handle Response from Server Action
        if (response.success) {
-            if (response.payment_session_id && response.order_id) {
+            if (response.payment_session_id && response.order_id && paymentMode === 'online') {
                 // --- Online Payment Required ---
                 console.log(`Payment session created: ${response.payment_session_id} for order: ${response.order_id}. Opening Drop-in...`);
 
@@ -401,11 +405,11 @@ export default function Home() {
                  // Drop-in handles the UI and redirection based on its callbacks or return_url
 
             } else if (response.order_id && !response.payment_session_id) {
-                // --- Fully Paid with Gepto Coins ---
-                console.log("Order fully paid with Gepto Coins. Order ID:", response.order_id);
+                // --- Fully Paid with Gepto Coins or COD ---
+                console.log(`Order placed using ${paymentMode === 'online' ? 'Gepto Coins' : 'Cash on Delivery'}. Order ID: ${response.order_id}`);
                 toast({
                     title: "Order Placed",
-                    description: response.message || "Successfully placed order using Gepto Coins.",
+                    description: response.message || `Successfully placed order using ${paymentMode === 'online' ? 'Gepto Coins' : 'Cash on Delivery'}.`,
                 });
                 setCart([]); // Clear cart
                 setUseGeptoCoins(false); // Reset checkbox
@@ -675,16 +679,28 @@ export default function Home() {
                    </div>
                 </CardContent>
                 <CardFooter>
+                    <div className="flex justify-between items-center w-full mb-2">
+                        <Label htmlFor="paymentMode" className="text-sm">Payment Mode:</Label>
+                        <select
+                            id="paymentMode"
+                            className="ml-2 p-1 border rounded text-sm"
+                            value={paymentMode}
+                            onChange={(e) => setPaymentMode(e.target.value as 'online' | 'cod')}
+                        >
+                            <option value="online">Online</option>
+                            <option value="cod">Cash on Delivery</option>
+                        </select>
+                    </div>
                   <Button
                       onClick={handleCheckout}
                       className="w-full transition-transform active:scale-95"
                        // More robust disabling logic
                       disabled={
                          isCheckingOut || // Disable during API call
-                         (getFinalAmount() > 0 && !isCashfreeSdkReady) || // Disable if payment needed but SDK not ready
+                         (paymentMode === 'online' && getFinalAmount() > 0 && !isCashfreeSdkReady) || // Disable if online payment needed but SDK not ready
                          !location || // Disable if location is missing
                          !address.toLowerCase().includes('cooch behar') || // Disable if address invalid
-                         (getFinalAmount() > 0 && getFinalAmount() < 1.00) // Disable if online payment needed but amount < 1 INR
+                         (paymentMode === 'online' && getFinalAmount() > 0 && getFinalAmount() < 1.00) // Disable if online payment needed but amount < 1 INR
                        }
                       aria-live="polite" // Announce changes for screen readers
                       aria-label={isCheckingOut ? "Processing payment" : (getFinalAmount() <= 0.01 && useGeptoCoins ? "Place order using Gepto Coins" : "Proceed to Payment Gateway")}
@@ -696,7 +712,7 @@ export default function Home() {
                       </>
                      ) : (
                       // Check if final amount is effectively zero AND coins are used
-                      getFinalAmount() < 0.01 && useGeptoCoins ? 'Place Order with Coins' : 'Proceed to Payment'
+                      getFinalAmount() < 0.01 && useGeptoCoins ? 'Place Order with Coins' : `Proceed to Payment via ${paymentMode === 'online' ? 'Online' : 'COD'}`
                      )}
                    </Button>
                 </CardFooter>
