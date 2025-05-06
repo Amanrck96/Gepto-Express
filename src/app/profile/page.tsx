@@ -20,8 +20,8 @@ export default function ProfilePage() {
             <p>User login and profile management are coming soon!</p>
              {/* Placeholder Login/Signup Buttons */}
              <div className="flex justify-center gap-4">
-                 <Button disabled>Login</Button>
-                 <Button variant="outline" disabled>Sign Up</Button>
+                 <Button>Login</Button>
+                 <Button variant="outline">Sign Up</Button>
              </div>
           </div>
            {/* Placeholder for profile details */}
@@ -51,3 +51,4 @@ export default function ProfilePage() {
     </div>
   );
 }
+
