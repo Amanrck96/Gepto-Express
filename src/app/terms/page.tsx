@@ -1,6 +1,13 @@
+
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 export default function TermsPage() {
+  const currentDate = new Date().toLocaleDateString('en-US', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+  });
+
   return (
     <div className="container mx-auto px-4 py-8">
       <Card>
@@ -70,7 +77,7 @@ export default function TermsPage() {
             If you have any questions about these Terms, please contact us via the Contact Us page.
           </p>
 
-          <p><em>Last updated: [Current Date]</em></p>
+          <p><em>Last updated: {currentDate}</em></p>
 
         </CardContent>
       </Card>

@@ -1,6 +1,13 @@
+
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 export default function PrivacyPage() {
+  const currentDate = new Date().toLocaleDateString('en-US', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+  });
+
   return (
     <div className="container mx-auto px-4 py-8">
       <Card>
@@ -94,7 +101,7 @@ export default function PrivacyPage() {
             For any questions or concerns regarding your privacy, you may contact us using the details on our Contact Us page.
           </p>
 
-          <p><em>Last updated: [Current Date]</em></p>
+          <p><em>Last updated: {currentDate}</em></p>
         </CardContent>
       </Card>
     </div>
