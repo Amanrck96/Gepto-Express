@@ -1,3 +1,4 @@
+
 'use client'; // Add this directive
 
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -30,12 +31,12 @@ export default function ContactPage() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8">
             <div>
               <h3 className="text-lg font-semibold mb-2">Contact Information</h3>
-              <p className="text-muted-foreground mb-1"><strong>Email:</strong> support@geptoexpress.example.com</p>
-              <p className="text-muted-foreground mb-1"><strong>Phone:</strong> +91 12345 67890 (Cooch Behar Office)</p>
+              <p className="text-muted-foreground mb-1"><strong>Owner:</strong> Aman Sah</p>
+              <p className="text-muted-foreground mb-1"><strong>Email:</strong> Amanrck69@gmail.com</p>
+              <p className="text-muted-foreground mb-1"><strong>Phone:</strong> +91 9547526440 / +91 8250522929</p>
               <p className="text-muted-foreground">
-                <strong>Address:</strong> Gepto Express HQ, Main Road, Cooch Behar, West Bengal, 736101, India
+                <strong>Address:</strong> S.N. Road, Near BSF Camp, P.O: Cooch Behar, District: Koch Bihar, West Bengal, 736101, India
               </p>
-              {/* Add operating hours if applicable */}
               <p className="text-muted-foreground mt-2"><strong>Hours:</strong> Mon-Sun, 7:00 AM - 10:00 PM</p>
             </div>
             <div>
@@ -66,3 +67,4 @@ export default function ContactPage() {
     </div>
   );
 }
+
