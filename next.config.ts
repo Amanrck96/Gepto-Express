@@ -16,6 +16,7 @@ const nextConfig: NextConfig = {
         port: '',
         pathname: '/**',
       },
+      // Added example.com to remote patterns
       {
         protocol: 'https',
         hostname: 'example.com',
