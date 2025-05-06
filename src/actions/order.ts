@@ -1,4 +1,3 @@
-
 'use server';
 
 import { Cashfree } from 'cashfree-pg';
@@ -101,6 +100,25 @@ export async function getOrderStatus(orderId: string): Promise<OrderStatusRespon
     };
   }
 
+    // 1.5. Handle Cash On Delivery (COD) Orders (Internal Check)
+    if (orderId.startsWith('GEPTO-COD-')) {
+        console.log(`Order Status Action: Order ${orderId} identified as a Cash On Delivery (COD) order.`);
+        // --- TODO: Add Database Check ---
+        // This is essential to confirm the COD order associated with this order ID
+        // actually completed successfully in your system (e.g., delivery confirmed).
+        // If the DB shows the COD order is still pending delivery, return appropriate status.
+        // For now, assume success if it's a GEPTO-COD ID.
+        console.log(`---> TODO: Verify internal status of Gepto COD order ${orderId} in database <---`);
+        // --- End TODO ---
+        return {
+            success: true,
+            order_status: 'PENDING', // Assuming awaiting delivery confirmation
+            transaction_status: 'PENDING', // No actual transaction yet
+            payment_amount: 0, // COD has no upfront monetary value
+            isCoinOrder: false,
+        };
+    }
+
   // 2. Initialize Cashfree SDK for regular orders
    let cashfree: Cashfree;
    try {
@@ -144,7 +162,7 @@ export async function getOrderStatus(orderId: string): Promise<OrderStatusRespon
         }
 
          // Normalize status to uppercase for consistency
-        const status = response.order_status.toUpperCase() as OrderStatusResponse['order_status'];
+        const status = response.order_status.toUpperCase() as OrderStatus['order_status'];
 
         // Potentially map Cashfree statuses to your internal statuses if needed
         // e.g., if Cashfree returns 'ACTIVE', maybe you treat it as 'PENDING'
