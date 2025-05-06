@@ -16,13 +16,12 @@ const nextConfig: NextConfig = {
         port: '',
         pathname: '/**',
       },
-      // Remove example.com as it's no longer used
-      // {
-      //   protocol: 'https',
-      //   hostname: 'example.com',
-      //   port: '',
-      //   pathname: '/**',
-      // }
+      {
+        protocol: 'https',
+        hostname: 'example.com',
+        port: '',
+        pathname: '/**',
+      }
     ],
   },
    // Make environment variables available to the client-side if necessary
