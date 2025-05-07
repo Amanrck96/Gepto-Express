@@ -1,3 +1,4 @@
+
 'use client'; // Needed for hooks like useState, useEffect
 
 import React, { useState, useEffect, useRef } from 'react';
@@ -5,9 +6,9 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Checkbox } from '@/components/ui/checkbox'; // Import Checkbox
-import { Label } from '@/components/ui/label'; // Import Label
-import { ShoppingCart, MapPin, Search, Plus, Minus, Loader2, Coins, Info } from 'lucide-react'; // Added Loader2 and Coins
+import { Checkbox } from '@/components/ui/checkbox';
+import { Label } from '@/components/ui/label';
+import { ShoppingCart, MapPin, Search, Plus, Minus, Loader2, Coins, Info } from 'lucide-react';
 import Image from 'next/image';
 import type { Location } from '@/services/geocoding';
 import type { Store } from '@/services/store';
@@ -16,11 +17,10 @@ import { getAddress, getLocation } from '@/services/geocoding';
 import { getNearbyStores } from '@/services/store';
 import { getProductCategories, getProductsByStoreAndCategory } from '@/services/product';
 import { useToast } from '@/hooks/use-toast';
-import { initiatePayment } from '@/actions/payment'; // Import the server action
-import Script from 'next/script'; // Import Next.js Script component
-import type { CashfreeDropinOptions } from '@/types/cashfree'; // Import types
-import { useAuth } from '@/context/AuthContext'; // Import useAuth
-
+import { initiatePayment } from '@/actions/payment';
+import Script from 'next/script';
+import type { CashfreeDropinOptions } from '@/types/cashfree';
+import { useAuth } from '@/context/AuthContext';
 
 // Mock Cart Item Type - Export it so it can be used in actions/payment.ts
 export interface CartItem extends Product {
@@ -28,7 +28,7 @@ export interface CartItem extends Product {
 }
 
 export default function Home() {
-  const { user } = useAuth(); // Get user from AuthContext
+  const { user } = useAuth();
   const [location, setLocation] = useState<Location | null>(null);
   const [address, setAddress] = useState<string>('');
   const [manualAddress, setManualAddress] = useState<string>('');
@@ -42,84 +42,69 @@ export default function Home() {
   const [loadingStores, setLoadingStores] = useState(false);
   const [loadingCategories, setLoadingCategories] = useState(false);
   const [loadingProducts, setLoadingProducts] = useState(false);
-  const [isCheckingOut, setIsCheckingOut] = useState(false); // State for checkout loading
-  const [geptoCoinBalance, setGeptoCoinBalance] = useState(0); // Default to 0
-  const [useGeptoCoins, setUseGeptoCoins] = useState(false); // State for checkbox
-  const [isCashfreeSdkReady, setIsCashfreeSdkReady] = useState(false); // Track if SDK script has loaded
-  const cashfreeInstanceRef = useRef<any>(null); // Ref to store the initialized SDK instance
+  const [isCheckingOut, setIsCheckingOut] = useState(false);
+  const [geptoCoinBalance, setGeptoCoinBalance] = useState(0);
+  const [useGeptoCoins, setUseGeptoCoins] = useState(false);
+  const [isCashfreeSdkReady, setIsCashfreeSdkReady] = useState(false);
+  const cashfreeInstanceRef = useRef<any>(null);
   const [paymentMode, setPaymentMode] = useState<'online' | 'cod'>('online');
 
   const { toast } = useToast();
 
   useEffect(() => {
     if (user) {
-      // TODO: Fetch user-specific Gepto Coins from Firestore or your backend
-      // For now, using a placeholder value if user is logged in.
-      setGeptoCoinBalance(100);
+      setGeptoCoinBalance(100); // Placeholder, fetch from DB
     } else {
-      setGeptoCoinBalance(0); // Reset coins if no user
+      setGeptoCoinBalance(0);
     }
   }, [user]);
 
-  // Determine Cashfree mode based on NEXT_PUBLIC_CASHFREE_APP_ID prefix from environment
   const appId = process.env.NEXT_PUBLIC_CASHFREE_APP_ID;
-  const isProductionEnv = process.env.NODE_ENV === 'production';
-
-
-  // Use App ID for mode determination, ensuring it defaults to sandbox if App ID is missing
   const isLiveMode = appId && !appId.startsWith('TEST');
   const cashfreeMode = isLiveMode ? 'production' : 'sandbox';
 
+  console.log(`Cashfree Frontend Mode: ${cashfreeMode} (App ID: ${appId ? appId.substring(0, 4) : 'N/A'}...)`);
 
-  console.log(`Cashfree Frontend Mode: ${cashfreeMode} (Using App ID starting with: ${appId ? appId.substring(0, 4) : 'N/A'}, NODE_ENV: ${process.env.NODE_ENV})`);
-
-  // Use Cashfree v3 Drop-in SDK URLs
   const cashfreeScriptSrc = cashfreeMode === 'production'
-    ? 'https://sdk.cashfree.com/js/v3/cashfree.js' // v3 Production script
-    : 'https://sdk.cashfree.com/js/v3/cashfree.sandbox.js'; // v3 Sandbox script
+    ? 'https://sdk.cashfree.com/js/v3/cashfree.js'
+    : 'https://sdk.cashfree.com/js/v3/cashfree.sandbox.js';
 
-
-  // --- SDK Initialization ---
-  // Function called when the SDK script loads successfully
   const handleCashfreeScriptLoad = () => {
     console.log(`Cashfree Drop-in SDK (v3) script loaded from ${cashfreeScriptSrc}. Mode: ${cashfreeMode}`);
     setIsCashfreeSdkReady(true);
     if (window.Cashfree) {
       try {
         cashfreeInstanceRef.current = new (window as any).Cashfree();
-        console.log('Cashfree SDK instance created (pre-init).');
+        console.log('Cashfree SDK instance created.');
       } catch (error) {
-         console.error('Error creating Cashfree SDK instance:', error);
-         toast({
-            title: "Payment Init Error",
-            description: "Could not create payment interface instance.",
-            variant: "destructive",
-         });
+        console.error('Error creating Cashfree SDK instance:', error);
+        toast({
+          title: "Payment Init Error",
+          description: "Could not create payment interface instance.",
+          variant: "destructive",
+        });
       }
     } else {
       console.error("Cashfree SDK script loaded but window.Cashfree is not available.");
-       toast({
-          title: "Payment Init Error",
-          description: "Payment script loaded incorrectly.",
-          variant: "destructive",
-       });
+      toast({
+        title: "Payment Init Error",
+        description: "Payment script loaded incorrectly.",
+        variant: "destructive",
+      });
     }
   };
 
-  // Function to handle SDK script loading errors
   const handleCashfreeScriptError = (e: any) => {
     console.error(`Cashfree Drop-in SDK (v3) script failed to load from URL: ${cashfreeScriptSrc}. Error:`, e);
     toast({
-        title: "Payment Script Load Error",
-        description: `Failed to load payment script from ${cashfreeScriptSrc}. Please check your internet connection, disable ad-blockers, and refresh.`,
-        variant: "destructive",
-        duration: 10000, // Longer duration for a more detailed message
+      title: "Payment Script Load Error",
+      description: `Failed to load payment script from ${cashfreeScriptSrc}. Please check your internet connection, disable ad-blockers, and refresh.`,
+      variant: "destructive",
+      duration: 10000,
     });
     setIsCashfreeSdkReady(false);
   };
 
-
-  // 1. Auto-detect location
   useEffect(() => {
     if ("geolocation" in navigator) {
       navigator.geolocation.getCurrentPosition(
@@ -129,14 +114,14 @@ export default function Home() {
           setLocation(detectedLocation);
           try {
             const addr = await getAddress(detectedLocation);
-             if (addr.formattedAddress.toLowerCase().includes('cooch behar')) {
-               setAddress(addr.formattedAddress);
-               toast({ title: "Location Detected", description: addr.formattedAddress });
-             } else {
-               setAddress("Service unavailable outside Cooch Behar");
-               toast({ title: "Location Error", description: "Gepto Express serves Cooch Behar only.", variant: "destructive" });
-               setLocation(null);
-             }
+            if (addr.formattedAddress.toLowerCase().includes('cooch behar')) {
+              setAddress(addr.formattedAddress);
+              toast({ title: "Location Detected", description: addr.formattedAddress });
+            } else {
+              setAddress("Service unavailable outside Cooch Behar");
+              toast({ title: "Location Error", description: "Gepto Express serves Cooch Behar only.", variant: "destructive" });
+              setLocation(null);
+            }
           } catch (error) {
             console.error("Error fetching address:", error);
             setAddress("Could not fetch address");
@@ -159,7 +144,6 @@ export default function Home() {
     }
   }, [toast]);
 
-  // Function to handle manual address submission
   const handleManualAddressSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!manualAddress.trim()) {
@@ -172,7 +156,6 @@ export default function Home() {
       setLocation(null);
       return;
     }
-
     setLoadingLocation(true);
     try {
       const loc = await getLocation(manualAddress);
@@ -189,12 +172,10 @@ export default function Home() {
     }
   };
 
-
-  // 2. Fetch nearby stores based on location
   useEffect(() => {
     if (location && address.toLowerCase().includes('cooch behar')) {
       setLoadingStores(true);
-      getNearbyStores(location, 5) // 5km radius
+      getNearbyStores(location, 5)
         .then(setStores)
         .catch(err => {
           console.error("Error fetching stores:", err);
@@ -206,7 +187,6 @@ export default function Home() {
     }
   }, [location, address, toast]);
 
-  // 3. Fetch product categories
   useEffect(() => {
     setLoadingCategories(true);
     getProductCategories()
@@ -218,31 +198,28 @@ export default function Home() {
       .finally(() => setLoadingCategories(false));
   }, [toast]);
 
-  // 4. Fetch products when category and store selected
   useEffect(() => {
     if (selectedCategory && stores.length > 0) {
       setLoadingProducts(true);
-       if (stores[0]?.id) {
-           getProductsByStoreAndCategory(stores[0].id, selectedCategory.id)
-           .then(setProducts)
-           .catch(err => {
-             console.error(`Error fetching products for category ${selectedCategory.name}:`, err);
-             toast({ title: "Product Fetch Error", description: `Could not load ${selectedCategory.name}.`, variant: "destructive" });
-             setProducts([]);
-           })
-           .finally(() => setLoadingProducts(false));
-       } else {
-           console.warn("No valid store ID found to fetch products for selected category.");
-           setLoadingProducts(false);
-           setProducts([]);
-       }
+      if (stores[0]?.id) {
+        getProductsByStoreAndCategory(stores[0].id, selectedCategory.id)
+          .then(setProducts)
+          .catch(err => {
+            console.error(`Error fetching products for category ${selectedCategory.name}:`, err);
+            toast({ title: "Product Fetch Error", description: `Could not load ${selectedCategory.name}.`, variant: "destructive" });
+            setProducts([]);
+          })
+          .finally(() => setLoadingProducts(false));
+      } else {
+        console.warn("No valid store ID found to fetch products.");
+        setLoadingProducts(false);
+        setProducts([]);
+      }
     } else {
       setProducts([]);
     }
   }, [selectedCategory, stores, toast]);
 
-
-  // Cart Functions
   const addToCart = (product: Product) => {
     setCart(prevCart => {
       const existingItem = prevCart.find(item => item.id === product.id);
@@ -269,172 +246,125 @@ export default function Home() {
     });
   };
 
-   const getCartTotal = () => {
-    const total = cart.reduce((total, item) => total + item.price * item.quantity, 0);
+  const getCartTotal = () => {
+    const total = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
     return Math.max(0, total);
-   };
+  };
 
-   const getFinalAmount = () => {
-     const total = getCartTotal();
-     if (useGeptoCoins && geptoCoinBalance > 0) {
-       const amountToCover = Math.min(total, geptoCoinBalance);
-       return Math.max(0, total - amountToCover);
-     }
-     return total;
-   };
+  const getCoinsUsed = () => {
+    const total = getCartTotal();
+    if (useGeptoCoins && geptoCoinBalance > 0) {
+      return Math.min(total, geptoCoinBalance);
+    }
+    return 0;
+  };
 
-   const getCoinsUsed = () => {
-     const total = getCartTotal();
-      if (useGeptoCoins && geptoCoinBalance > 0) {
-        return Math.min(total, geptoCoinBalance);
-      }
-      return 0;
-   }
+  const getFinalAmount = () => {
+    const total = getCartTotal();
+    const coinsToUse = getCoinsUsed();
+    return Math.max(0, total - coinsToUse);
+  };
 
   const getCartItemCount = () => {
     return cart.reduce((count, item) => count + item.quantity, 0);
   };
 
-  // Checkout Function - Updated for v3 Drop-in SDK
   const handleCheckout = async () => {
-     if (cart.length === 0) {
-       toast({ title: "Empty Cart", description: "Please add items to your cart before checkout.", variant: "destructive" });
-       return;
-     }
-      if (!location || !address.toLowerCase().includes('cooch behar')) {
-        toast({ title: "Invalid Location", description: "Please set a valid delivery address in Cooch Behar.", variant: "destructive" });
+    if (cart.length === 0) {
+      toast({ title: "Empty Cart", description: "Add items to cart.", variant: "destructive" });
+      return;
+    }
+    if (!location || !address.toLowerCase().includes('cooch behar')) {
+      toast({ title: "Invalid Location", description: "Set a valid delivery address in Cooch Behar.", variant: "destructive" });
+      return;
+    }
+
+    const finalAmount = getFinalAmount();
+    if (finalAmount > 0 && finalAmount < 1.00 && paymentMode === 'online') {
+      toast({ title: "Minimum Amount", description: "Minimum order for online payment is ₹1.00.", variant: "destructive" });
+      return;
+    }
+
+    if (paymentMode === 'online' && finalAmount > 0) {
+      if (!isCashfreeSdkReady || !cashfreeInstanceRef.current) {
+        console.error("Checkout failed: Cashfree SDK not ready.");
+        toast({ title: "Payment Error", description: "Payment system not ready. Refresh or wait.", variant: "destructive" });
         return;
-     }
-
-     const finalAmount = getFinalAmount();
-     if (finalAmount > 0 && finalAmount < 1.00 && paymentMode === 'online') {
-         toast({
-            title: "Minimum Amount",
-            description: "Minimum order amount for online payment is ₹1.00.",
-            variant: "destructive",
-         });
-         return;
-     }
-
-      if (paymentMode === 'online') {
-          if (!isCashfreeSdkReady || !cashfreeInstanceRef.current) {
-           console.error("Checkout attempt failed: Cashfree SDK not ready or instance not created.");
-           toast({
-             title: "Payment Error",
-             description: "Payment system is not ready. Please wait a moment or refresh the page.",
-             variant: "destructive",
-           });
-           return;
-         }
       }
+    }
 
-     setIsCheckingOut(true);
+    setIsCheckingOut(true);
 
-     const customerId = user?.uid || `GEPTO_GUEST_${Math.random().toString(36).substring(2, 10)}`;
-     const customerEmail = user?.email || 'guest@gepto.example.com';
-     const customerPhone = user?.phoneNumber || '9999999999'; // Placeholder, ideally get from profile
-     const customerName = user?.displayName || 'Gepto Guest';
+    const customerId = user?.uid || `GUEST_${Date.now()}`;
+    const customerDetails = {
+      customerId: customerId,
+      customerEmail: user?.email || 'guest@gepto.example.com',
+      customerPhone: user?.phoneNumber || '9999999999', // Placeholder
+      customerName: user?.displayName || 'Gepto Guest',
+    };
 
+    try {
+      const total = getCartTotal();
+      const coinsToUse = getCoinsUsed();
 
-     const customerDetails = {
-       customerId: customerId,
-       customerEmail: customerEmail,
-       customerPhone: customerPhone,
-       customerName: customerName
-     };
+      const response = await initiatePayment({
+        items: cart,
+        totalAmount: total,
+        customerDetails: customerDetails,
+        useGeptoCoins: useGeptoCoins,
+        geptoCoinBalance: geptoCoinBalance,
+        paymentMode: paymentMode,
+      });
 
-     try {
-       const total = getCartTotal();
-       const coinsToUse = getCoinsUsed();
+      if (response.success) {
+        if (response.payment_session_id && response.order_id && paymentMode === 'online' && finalAmount > 0) {
+          const dropinOptions: CashfreeDropinOptions = {
+            paymentSessionId: response.payment_session_id,
+            orderId: response.order_id,
+            components: ["order-details", "card", "upi", "app", "netbanking"],
+            onSuccess: (data) => {
+              toast({ title: "Payment Successful", description: `Order ${data.order?.orderId} placed.` });
+              window.location.href = `/order/status?order_id=${data.order?.orderId}`;
+            },
+            onFailure: (data) => {
+              toast({ title: "Payment Failed", description: data.order?.errorText || "Payment could not be completed.", variant: "destructive" });
+              window.location.href = `/order/status?order_id=${data.order?.orderId}`;
+            },
+          };
+          cashfreeInstanceRef.current.drop(dropinOptions);
+        } else if (response.order_id) { // For COD or fully paid by coins
+          toast({ title: "Order Placed", description: response.message || `Order placed successfully.` });
+          setCart([]);
+          setUseGeptoCoins(false);
+          setTimeout(() => {
+            window.location.href = `/order/status?order_id=${response.order_id}`;
+          }, 1500);
+        } else {
+          throw new Error("Invalid response from server for online payment.");
+        }
+      } else {
+        throw new Error(response.error || 'Failed to initiate payment.');
+      }
+    } catch (error: any) {
+      console.error('Checkout error:', error);
+      toast({ title: 'Checkout Failed', description: error.message || 'Could not start payment.', variant: 'destructive' });
+    } finally {
+      setIsCheckingOut(false);
+    }
+  };
 
-       console.log(`Checkout Initiated: Total=₹${total.toFixed(2)}, Coins Used=${coinsToUse.toFixed(0)}, Final Amount=₹${finalAmount.toFixed(2)}, Payment Mode: ${paymentMode}`);
-       console.log('Calling initiatePayment server action...');
-
-       const response = await initiatePayment({
-         items: cart,
-         totalAmount: total,
-         customerDetails: customerDetails,
-         useGeptoCoins: useGeptoCoins,
-         geptoCoinBalance: geptoCoinBalance,
-         paymentMode: paymentMode,
-       });
-
-       console.log('Server action response:', response);
-
-       if (response.success) {
-            if (response.payment_session_id && response.order_id && paymentMode === 'online') {
-                console.log(`Payment session created: ${response.payment_session_id} for order: ${response.order_id}. Opening Drop-in...`);
-
-                 const dropinOptions: CashfreeDropinOptions = {
-                    paymentSessionId: response.payment_session_id,
-                    orderId: response.order_id,
-                    components: [ "order-details", "card", "upi", "app", "netbanking" ],
-                    onSuccess: (data) => {
-                        console.log('Cashfree Drop-in Success:', data);
-                        toast({
-                          title: "Payment Successful",
-                          description: `Order ${data.order?.orderId} placed successfully.`,
-                        });
-                         window.location.href = `/order/status?order_id=${data.order?.orderId}`;
-                    },
-                    onFailure: (data) => {
-                         console.error('Cashfree Drop-in Failure:', data);
-                         toast({
-                           title: "Payment Failed",
-                           description: data.order?.errorText || "Payment could not be completed.",
-                           variant: "destructive",
-                         });
-                          window.location.href = `/order/status?order_id=${data.order?.orderId}`;
-                    },
-                 };
-                 cashfreeInstanceRef.current.drop(dropinOptions);
-
-            } else if (response.order_id && !response.payment_session_id) {
-                console.log(`Order placed using ${paymentMode === 'online' && finalAmount < 0.01 ? 'Gepto Coins' : 'Cash on Delivery'}. Order ID: ${response.order_id}`);
-                toast({
-                    title: "Order Placed",
-                    description: response.message || `Successfully placed order using ${paymentMode === 'online' && finalAmount < 0.01 ? 'Gepto Coins' : 'Cash on Delivery'}.`,
-                });
-                setCart([]); 
-                setUseGeptoCoins(false); 
-                setTimeout(() => {
-                    window.location.href = `/order/status?order_id=${response.order_id}`;
-                }, 1500);
-            } else {
-                 console.error("Checkout Error: Server action successful but response missing required IDs for online payment flow.");
-                 throw new Error("Invalid response from server. Online payment cannot proceed.");
-            }
-       } else {
-         console.error("Checkout Error: Server action failed.", response.error);
-         throw new Error(response.error || 'Failed to initiate payment process. Please try again.');
-       }
-     } catch (error: any) {
-       console.error('Checkout error during handleCheckout:', error);
-       toast({
-         title: 'Checkout Failed',
-         description: error.message || 'Could not start payment. Please try again or contact support.',
-         variant: 'destructive',
-       });
-     } finally {
-       setIsCheckingOut(false);
-     }
-   };
-
-
-  // Filter products based on search term
   const filteredProducts = products.filter(product =>
     product.name.toLowerCase().includes(searchTerm.toLowerCase())
   );
-
 
   return (
     <>
       <Script
         id="cf-dropin-js"
         src={cashfreeScriptSrc}
-        strategy="lazyOnload" 
-        onLoad={handleCashfreeScriptLoad} 
-        onError={handleCashfreeScriptError} 
+        strategy="afterInteractive" // Changed from lazyOnload
+        onLoad={handleCashfreeScriptLoad}
+        onError={handleCashfreeScriptError}
       />
 
       <div className="space-y-8">
@@ -461,127 +391,125 @@ export default function Home() {
                 <Button type="submit" disabled={loadingLocation}>Set Location</Button>
               </form>
             )}
-             {!loadingLocation && address && !address.toLowerCase().includes('cooch behar') && (
-                  <p className="text-sm text-destructive mt-2 flex items-center gap-1">
-                    <Info className="h-4 w-4" /> Service is only available in Cooch Behar.
-                  </p>
-             )}
+            {!loadingLocation && address && !address.toLowerCase().includes('cooch behar') && (
+              <p className="text-sm text-destructive mt-2 flex items-center gap-1">
+                <Info className="h-4 w-4" /> Service is only available in Cooch Behar.
+              </p>
+            )}
           </CardContent>
         </Card>
 
         {location && address.toLowerCase().includes('cooch behar') ? (
           <>
-            {loadingStores && <p>Loading nearby stores...</p>}
+            {loadingStores && <p className="animate-pulse-bg p-2 rounded-md">Loading nearby stores...</p>}
             {stores.length > 0 && !loadingStores && (
               <p className="text-sm text-muted-foreground">Showing items from: <strong>{stores[0].name}</strong> (Nearest)</p>
             )}
-             {stores.length === 0 && !loadingStores && !loadingLocation && (
+            {stores.length === 0 && !loadingStores && !loadingLocation && (
               <p className="text-sm text-destructive">No stores found nearby in Cooch Behar.</p>
             )}
 
-             {stores.length > 0 && (
-                 <section>
-                   <h2 className="text-2xl font-semibold mb-4">Categories</h2>
-                   {loadingCategories ? (
-                     <div className="flex flex-wrap gap-2">
-                        <div className="h-9 w-20 bg-muted rounded-md animate-pulse"></div>
-                        <div className="h-9 w-24 bg-muted rounded-md animate-pulse"></div>
-                        <div className="h-9 w-16 bg-muted rounded-md animate-pulse"></div>
-                     </div>
-                   ) : categories.length > 0 ? (
-                     <div className="flex flex-wrap gap-2">
-                       {categories.map(category => (
-                         <Button
-                           key={category.id}
-                           variant={selectedCategory?.id === category.id ? "default" : "outline"}
-                           onClick={() => setSelectedCategory(category)}
-                           className="transition-transform active:scale-95"
-                         >
-                           {category.name}
-                         </Button>
-                       ))}
-                     </div>
-                   ) : (
-                      <p>No product categories found for this store.</p>
-                   )}
-                 </section>
-             )}
+            {stores.length > 0 && (
+              <section>
+                <h2 className="text-2xl font-semibold mb-4">Categories</h2>
+                {loadingCategories ? (
+                  <div className="flex flex-wrap gap-2">
+                    {[...Array(3)].map((_, i) => <div key={i} className="h-9 w-20 bg-muted rounded-md animate-pulse"></div>)}
+                  </div>
+                ) : categories.length > 0 ? (
+                  <div className="flex flex-wrap gap-2">
+                    {categories.map(category => (
+                      <Button
+                        key={category.id}
+                        variant={selectedCategory?.id === category.id ? "default" : "outline"}
+                        onClick={() => setSelectedCategory(category)}
+                        className="transition-transform active:scale-95"
+                      >
+                        {category.name}
+                      </Button>
+                    ))}
+                  </div>
+                ) : (
+                  <p>No product categories found.</p>
+                )}
+              </section>
+            )}
 
             {selectedCategory && stores.length > 0 && (
               <section>
-                <h2 className="text-2xl font-semibold mb-4">
+                <h2 className="text-2xl font-semibold mb-4 mt-6">
                   {selectedCategory.name}
                 </h2>
-                <div className="relative mb-4 max-w-sm"> 
-                   <Search className="absolute left-2.5 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <div className="relative mb-4 max-w-sm">
+                  <Search className="absolute left-2.5 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                   <Input
                     type="search"
                     placeholder={`Search in ${selectedCategory.name}...`}
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
-                    className="pl-8" 
+                    className="pl-8"
                   />
                 </div>
 
                 {loadingProducts ? (
                   <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                     {[...Array(4)].map((_, i) => (
-                       <Card key={i} className="overflow-hidden flex flex-col animate-pulse">
-                         <div className="relative aspect-square bg-muted"></div>
-                         <CardContent className="p-4 flex-grow">
-                           <div className="h-5 w-3/4 bg-muted rounded mb-1"></div>
-                           <div className="h-4 w-1/2 bg-muted rounded mb-2"></div>
-                           <div className="h-5 w-1/4 bg-muted rounded"></div>
-                         </CardContent>
-                         <CardFooter className="p-4 pt-0">
-                           <div className="h-9 w-full bg-muted rounded"></div>
-                         </CardFooter>
-                       </Card>
-                     ))}
+                    {[...Array(4)].map((_, i) => (
+                      <Card key={i} className="overflow-hidden flex flex-col animate-pulse">
+                        <div className="relative aspect-square bg-muted"></div>
+                        <CardContent className="p-4 flex-grow">
+                          <div className="h-5 w-3/4 bg-muted rounded mb-1"></div>
+                          <div className="h-4 w-1/2 bg-muted rounded mb-2"></div>
+                          <div className="h-5 w-1/4 bg-muted rounded"></div>
+                        </CardContent>
+                        <CardFooter className="p-4 pt-0">
+                          <div className="h-9 w-full bg-muted rounded"></div>
+                        </CardFooter>
+                      </Card>
+                    ))}
                   </div>
                 ) : filteredProducts.length > 0 ? (
                   <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
                     {filteredProducts.map(product => (
-                      <Card key={product.id} className="overflow-hidden flex flex-col transition-shadow hover:shadow-md">
-                         <div className="relative aspect-square w-full overflow-hidden bg-muted">
-                             <Image
-                               src={product.imageUrl && product.imageUrl.startsWith('https://picsum.photos') ? product.imageUrl : `https://picsum.photos/300/300?random=${product.id}`}
-                               alt={product.name}
-                               fill 
-                               sizes="(max-width: 640px) 90vw, (max-width: 768px) 45vw, (max-width: 1024px) 30vw, 23vw" 
-                               style={{ objectFit: 'cover' }} 
-                               data-ai-hint="product grocery item"
-                               onError={(e) => {
-                                   const target = e.target as HTMLImageElement;
-                                   if (!target.src.startsWith('https://picsum.photos')) {
-                                        target.src = `https://picsum.photos/300/300?random=${product.id}`;
-                                   }
-                               }}
-                             />
-                         </div>
+                      <Card key={product.id} className="overflow-hidden flex flex-col transition-shadow hover:shadow-lg">
+                        <div className="relative aspect-square w-full overflow-hidden bg-muted">
+                          <Image
+                            src={product.imageUrl && product.imageUrl.startsWith('https://picsum.photos') ? product.imageUrl : `https://picsum.photos/300/300?random=${product.id}`}
+                            alt={product.name}
+                            fill
+                            sizes="(max-width: 640px) 90vw, (max-width: 768px) 45vw, (max-width: 1024px) 30vw, 23vw"
+                            style={{ objectFit: 'cover' }}
+                            data-ai-hint="grocery product"
+                            onError={(e) => {
+                              const target = e.target as HTMLImageElement;
+                              if (target.src !== `https://picsum.photos/300/300?random=${product.id}`) {
+                                target.src = `https://picsum.photos/300/300?random=${product.id}`;
+                              }
+                            }}
+                          />
+                        </div>
                         <CardContent className="p-4 flex-grow">
                           <CardTitle className="text-lg mb-1 line-clamp-1">{product.name}</CardTitle>
-                          <CardDescription className="text-sm mb-2 line-clamp-2">{product.description}</CardDescription>
-                          <Badge variant="secondary">₹{product.price.toFixed(2)}</Badge>
+                          <CardDescription className="text-sm mb-2 line-clamp-2 h-10">{product.description}</CardDescription>
+                          <Badge variant="secondary" className="mt-1">₹{product.price.toFixed(2)}</Badge>
                         </CardContent>
-                        <CardFooter className="p-4 pt-0 mt-auto"> 
+                        <CardFooter className="p-4 pt-0 mt-auto">
                           {cart.find(item => item.id === product.id) ? (
-                             <div className="flex items-center gap-2 w-full justify-between">
-                                <Button aria-label={`Decrease quantity of ${product.name}`} variant="outline" size="icon" onClick={() => removeFromCart(product.id)} className="h-8 w-8 transition-transform active:scale-90">
-                                  <Minus className="h-4 w-4" />
-                                </Button>
-                                <span className="font-medium w-4 text-center tabular-nums" aria-live="polite">
-                                  {cart.find(item => item.id === product.id)?.quantity}
-                                </span>
-                                <Button aria-label={`Increase quantity of ${product.name}`} variant="default" size="icon" onClick={() => addToCart(product)} className="h-8 w-8 transition-transform active:scale-90">
-                                  <Plus className="h-4 w-4" />
-                                </Button>
-                             </div>
+                            <div className="flex items-center gap-2 w-full justify-between">
+                              <Button aria-label={`Decrease quantity of ${product.name}`} variant="outline" size="icon" onClick={() => removeFromCart(product.id)} className="h-8 w-8 transition-transform active:scale-90">
+                                <Minus className="h-4 w-4" />
+                              </Button>
+                              <span className="font-medium w-4 text-center tabular-nums" aria-live="polite">
+                                {cart.find(item => item.id === product.id)?.quantity}
+                              </span>
+                              <Button aria-label={`Increase quantity of ${product.name}`} variant="default" size="icon" onClick={() => addToCart(product)} className="h-8 w-8 transition-transform active:scale-90">
+                                <Plus className="h-4 w-4" />
+                              </Button>
+                            </div>
                           ) : (
-                             <Button onClick={() => addToCart(product)} className="w-full transition-transform active:scale-95">
-                               Add to Cart
-                             </Button>
-                           )}
+                            <Button onClick={() => addToCart(product)} className="w-full transition-transform active:scale-95">
+                              Add to Cart
+                            </Button>
+                          )}
                         </CardFooter>
                       </Card>
                     ))}
@@ -592,98 +520,95 @@ export default function Home() {
               </section>
             )}
 
-             {cart.length > 0 && (
+            {cart.length > 0 && (
               <Card className="fixed bottom-4 right-4 w-72 shadow-xl z-50 bg-card border">
-                <CardHeader className="pb-2"> 
+                <CardHeader className="pb-2">
                   <CardTitle className="flex items-center justify-between text-lg">
                     Your Cart
                     <Badge>{getCartItemCount()}</Badge>
                   </CardTitle>
                 </CardHeader>
-                <CardContent className="py-2 max-h-48 overflow-y-auto"> 
-                    <ul className="text-xs space-y-1 text-muted-foreground mb-2">
-                      {cart.slice(0, 5).map(item=>( 
-                          <li key={item.id} className="flex justify-between">
-                              <span className="truncate pr-1">{item.name} x {item.quantity}</span>
-                               <span className="whitespace-nowrap">₹{(item.price * item.quantity).toFixed(2)}</span>
-                          </li>
-                      ))}
-                       {cart.length > 5 && <li className="text-center text-xs">...and more</li>}
-                    </ul>
-
-                     <div className="text-sm mb-2 border-t pt-2">Subtotal: ₹{getCartTotal().toFixed(2)}</div>
-
-                    <div className="flex items-center space-x-2 mb-2 border-t pt-2">
-                       <Checkbox
-                          id="useGeptoCoins"
-                          checked={useGeptoCoins}
-                          onCheckedChange={(checked) => setUseGeptoCoins(checked as boolean)}
-                          disabled={geptoCoinBalance <= 0 || getCartTotal() <= 0}
-                          aria-label={`Use Gepto Coins. Available balance: ${geptoCoinBalance}`}
-                       />
-                      <Label
-                        htmlFor="useGeptoCoins"
-                        className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 flex items-center gap-1"
-                      >
-                        Use Gepto Coins <Coins className="h-4 w-4 text-yellow-500 inline-block" /> ({geptoCoinBalance})
-                       </Label>
+                <CardContent className="py-2 max-h-48 overflow-y-auto">
+                  <ul className="text-xs space-y-1 text-muted-foreground mb-2">
+                    {cart.slice(0, 5).map(item => (
+                      <li key={item.id} className="flex justify-between">
+                        <span className="truncate pr-1">{item.name} x {item.quantity}</span>
+                        <span className="whitespace-nowrap">₹{(item.price * item.quantity).toFixed(2)}</span>
+                      </li>
+                    ))}
+                    {cart.length > 5 && <li className="text-center text-xs">...and more</li>}
+                  </ul>
+                  <div className="text-sm mb-2 border-t pt-2">Subtotal: ₹{getCartTotal().toFixed(2)}</div>
+                  <div className="flex items-center space-x-2 mb-2 border-t pt-2">
+                    <Checkbox
+                      id="useGeptoCoins"
+                      checked={useGeptoCoins}
+                      onCheckedChange={(checked) => setUseGeptoCoins(checked as boolean)}
+                      disabled={geptoCoinBalance <= 0 || getCartTotal() <= 0}
+                      aria-label={`Use Gepto Coins. Available balance: ${geptoCoinBalance}`}
+                    />
+                    <Label
+                      htmlFor="useGeptoCoins"
+                      className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 flex items-center gap-1"
+                    >
+                      Use Gepto Coins <Coins className="h-4 w-4 text-yellow-500 inline-block" /> ({geptoCoinBalance})
+                    </Label>
+                  </div>
+                  {useGeptoCoins && geptoCoinBalance > 0 && getCoinsUsed() > 0 && (
+                    <div className="text-xs text-green-600 mb-2">
+                      - ₹{getCoinsUsed().toFixed(2)} (Applied)
                     </div>
-                    {useGeptoCoins && geptoCoinBalance > 0 && getCoinsUsed() > 0 && (
-                        <div className="text-xs text-green-600 mb-2">
-                          - ₹{getCoinsUsed().toFixed(2)} (Applied)
-                        </div>
-                    )}
-
-                   <div className="text-lg font-semibold mb-1 border-t pt-2">
-                      Final Amount: ₹{getFinalAmount().toFixed(2)}
-                   </div>
+                  )}
+                  <div className="text-lg font-semibold mb-1 border-t pt-2">
+                    Final Amount: ₹{getFinalAmount().toFixed(2)}
+                  </div>
                 </CardContent>
-                <CardFooter className="flex-col items-start">
-                    <div className="flex justify-between items-center w-full mb-2">
-                        <Label htmlFor="paymentMode" className="text-sm">Payment Mode:</Label>
-                        <select
-                            id="paymentMode"
-                            className="ml-2 p-1 border rounded text-sm bg-background text-foreground"
-                            value={paymentMode}
-                            onChange={(e) => setPaymentMode(e.target.value as 'online' | 'cod')}
-                        >
-                            <option value="online">Online</option>
-                            <option value="cod">Cash on Delivery</option>
-                        </select>
-                    </div>
+                <CardFooter className="flex-col items-start gap-2">
+                  <div className="flex justify-between items-center w-full">
+                    <Label htmlFor="paymentMode" className="text-sm">Payment Mode:</Label>
+                    <select
+                      id="paymentMode"
+                      className="ml-2 p-1 border rounded text-sm bg-background text-foreground"
+                      value={paymentMode}
+                      onChange={(e) => setPaymentMode(e.target.value as 'online' | 'cod')}
+                    >
+                      <option value="online">Online</option>
+                      <option value="cod">Cash on Delivery</option>
+                    </select>
+                  </div>
                   <Button
-                      onClick={handleCheckout}
-                      className="w-full transition-transform active:scale-95"
-                      disabled={
-                         isCheckingOut || 
-                         (paymentMode === 'online' && getFinalAmount() > 0 && !isCashfreeSdkReady) || 
-                         !location || 
-                         !address.toLowerCase().includes('cooch behar') || 
-                         (paymentMode === 'online' && getFinalAmount() > 0 && getFinalAmount() < 1.00) 
-                       }
-                      aria-live="polite" 
-                      aria-label={isCheckingOut ? "Processing payment" : (getFinalAmount() <= 0.01 && useGeptoCoins && paymentMode === 'online' ? "Place order using Gepto Coins" : (paymentMode === 'cod' ? "Place Order with COD" : "Proceed to Online Payment"))}
+                    onClick={handleCheckout}
+                    className="w-full transition-transform active:scale-95"
+                    disabled={
+                      isCheckingOut ||
+                      (paymentMode === 'online' && getFinalAmount() > 0 && !isCashfreeSdkReady) ||
+                      !location ||
+                      !address.toLowerCase().includes('cooch behar') ||
+                      (paymentMode === 'online' && getFinalAmount() > 0 && getFinalAmount() < 1.00)
+                    }
+                    aria-live="polite"
+                    aria-label={isCheckingOut ? "Processing" : (paymentMode === 'cod' ? "Place Order (COD)" : (getFinalAmount() < 0.01 && useGeptoCoins ? "Place Order with Coins" : "Proceed to Online Payment"))}
                   >
-                     {isCheckingOut ? (
+                    {isCheckingOut ? (
                       <>
-                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                       Processing...
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Processing...
                       </>
-                     ) : (
-                      paymentMode === 'cod' ? 'Place Order (COD)' : 
-                      (getFinalAmount() < 0.01 && useGeptoCoins ? 'Place Order with Coins' : 'Proceed to Online Payment')
-                     )}
-                   </Button>
+                    ) : (
+                      paymentMode === 'cod' ? 'Place Order (COD)' :
+                        (getFinalAmount() < 0.01 && useGeptoCoins ? 'Place Order with Coins' : 'Proceed to Online Payment')
+                    )}
+                  </Button>
                 </CardFooter>
               </Card>
             )}
           </>
         ) : (
-           !loadingLocation && (
-              <div className="text-center text-muted-foreground mt-8">
-                 <p>Please set your delivery location in Cooch Behar to start shopping.</p>
-              </div>
-           )
+          !loadingLocation && (
+            <div className="text-center text-muted-foreground mt-8">
+              <p>Please set your delivery location in Cooch Behar to start shopping.</p>
+            </div>
+          )
         )}
       </div>
     </>
@@ -693,8 +618,8 @@ export default function Home() {
 declare global {
   interface Window {
     Cashfree?: {
-        new (): any; 
-        drop(options: CashfreeDropinOptions): void;
+      new(): any;
+      drop(options: CashfreeDropinOptions): void;
     };
   }
 }
