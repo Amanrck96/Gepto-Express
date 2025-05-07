@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { useAuth } from "@/context/AuthContext";
 import Image from 'next/image';
 import { Skeleton } from "@/components/ui/skeleton"; // For loading state
+import React, { useState, useEffect } from 'react'; // Import useState and useEffect
 
 export default function ProfilePage() {
   const { user, loading, signInWithGoogle, signOut } = useAuth();
