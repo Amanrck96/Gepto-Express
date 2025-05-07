@@ -17,8 +17,11 @@ const nextConfig: NextConfig = {
         port: '',
         pathname: '/**',
       },
-      // Added example.com to remote patterns - this was causing issues, removing it unless a specific image source requires it.
-      // Placeholder images are from picsum.photos
+      // Placeholder for user avatars if needed in future
+      // {
+      //   protocol: 'https',
+      //   hostname: 'lh3.googleusercontent.com', 
+      // },
     ],
   },
    // Make environment variables available to the client-side if necessary
@@ -43,3 +46,4 @@ const nextConfig: NextConfig = {
 };
 
 export default nextConfig;
+

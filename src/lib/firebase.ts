@@ -1,3 +1,4 @@
+
 // src/lib/firebase.ts
 import { initializeApp, getApps, getApp, type FirebaseApp } from 'firebase/app';
 import { getAuth, GoogleAuthProvider } from 'firebase/auth';
@@ -13,7 +14,7 @@ const firebaseConfig = {
   storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
   messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
   appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
-  measurementId: process.env.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID,
+  measurementId: process.env.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID, // Keep measurementId if used
 };
 
 // Initialize Firebase
@@ -24,6 +25,7 @@ if (!firebaseConfig.apiKey) {
     'Firebase API Key is missing. Make sure NEXT_PUBLIC_FIREBASE_API_KEY is set in your .env.local file and exposed in next.config.js.'
   );
 }
+
 
 if (!getApps().length) {
   app = initializeApp(firebaseConfig);
@@ -37,3 +39,4 @@ const storage = getStorage(app);
 const googleProvider = new GoogleAuthProvider();
 
 export { app, auth, firestore, storage, googleProvider };
+
