@@ -4,7 +4,7 @@
 import { useState, useEffect } from 'react'; // Import useEffect
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
-import { ShoppingCart, User, Package, Coins, LogIn } from 'lucide-react';
+import { ShoppingCart, User, Package, Coins, LogIn, Shield } from 'lucide-react'; // Added Shield for Admin
 import { useAuth } from '@/context/AuthContext'; // Import useAuth
 import Image from 'next/image'; // Import Next Image for profile picture
 
@@ -45,13 +45,13 @@ export function Header() {
              </Link>
            </Button>
            <Button variant="ghost" size="icon" aria-label="Shopping Cart">
-             <ShoppingCart className="h-5 w-5" />
+             <ShoppingCart className="h-5 w-5" /> {/* This can link to /cart or manage cart state */}
            </Button>
            
            <Button variant="ghost" size="icon" aria-label="User Profile" asChild>
              <Link href="/profile">
                {loading ? (
-                 <User className="h-5 w-5 animate-pulse" /> // Show placeholder while loading
+                 <User className="h-5 w-5 animate-pulse" /> 
                ) : user && user.photoURL ? (
                   <Image 
                     src={user.photoURL} 
@@ -62,10 +62,16 @@ export function Header() {
                     data-ai-hint="user avatar" 
                   />
                ) : user ? (
-                 <User className="h-5 w-5" /> // Default icon if no photoURL
+                 <User className="h-5 w-5" /> 
                ) : (
-                 <LogIn className="h-5 w-5" /> // Login icon if not logged in
+                 <LogIn className="h-5 w-5" /> 
                )}
+             </Link>
+           </Button>
+           {/* TODO: Conditionally render this Admin link based on user role in the future */}
+           <Button variant="ghost" size="icon" aria-label="Admin Panel" asChild>
+             <Link href="/admin">
+               <Shield className="h-5 w-5" />
              </Link>
            </Button>
         </nav>
@@ -73,3 +79,4 @@ export function Header() {
     </header>
   );
 }
+
