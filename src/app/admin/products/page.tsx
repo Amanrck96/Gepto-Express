@@ -16,7 +16,6 @@ export default function AdminProductsPage() {
           <CardDescription>View, add, edit, or delete products in your catalog.</CardDescription>
         </div>
         <Button asChild>
-          {/* This link will eventually go to a new page or open a modal to add a product */}
           <Link href="/admin/products/new"> 
             <PlusCircle className="mr-2 h-4 w-4" /> Add New Product
           </Link>
